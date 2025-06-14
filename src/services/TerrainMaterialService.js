@@ -13,6 +13,45 @@ const DEFAULT_NORMAL_URL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg
 const DEFAULT_ROUGHNESS_URL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/brown_mud_leaves_01/brown_mud_leaves_01_rough_4k.jpg';
 const DEFAULT_DISPLACEMENT_URL = 'https://dl.polyhaven.org/file/ph-assets/Textures/jpg/4k/brown_mud_leaves_01/brown_mud_leaves_01_disp_4k.jpg';
 
+export const DefaultTextureURLs = {
+    albedo: DEFAULT_ALBEDO_URL,
+    normal: DEFAULT_NORMAL_URL,
+    roughness: DEFAULT_ROUGHNESS_URL,
+    displacement: DEFAULT_DISPLACEMENT_URL,
+};
+
+export const DefaultTerrainMaterialParams = {
+    heightScale: 0.5,
+    rockHeight: 0.6,
+    moistureScale: 0.8,
+    moistureNoiseScale: 0.05,
+    terrainBlendSharpness: 1.5,
+    normalStrength: 0.5,
+    specularIntensity: 0.3,
+    roughness: 0.7,
+    detailScale: 0.1,
+    microDetailScale: 0.5,
+    textureResolution: 1.0,
+    gravelIntensity: 0.5,
+    gravelScale: 12.0,
+    sedimentCurvatureIntensity: 0.5,
+    snowHeight: 0.8,
+    snowSharpness: 1.0,
+    vegetationDensity: 0.7,
+    rockVariation: 0.2,
+    albedoMap: null, // Will be loaded by default in createTexturedTerrainMaterial
+    normalMap: null, // Will be loaded by default
+    roughnessMap: null, // Will be loaded by default
+    displacementMap: null, // Will be loaded by default
+    displacementScale: 0.2, // Note: createTexturedTerrainMaterial overrides this if not in params
+    textureScale: 1.0,
+    normalMapStrength: 1.0,
+    roughnessMultiplier: 1.0,
+    albedoIntensity: 0.6,
+    // Texture URLs are separate but can be referenced via DefaultTextureURLs
+};
+
+
 /**
  * Loads the default Poly Haven PBR textures for terrain.
  * @returns {Promise<{albedoMap: THREE.Texture, normalMap: THREE.Texture, roughnessMap: THREE.Texture, displacementMap: THREE.Texture}>}
@@ -34,43 +73,52 @@ export async function loadDefaultTerrainTextures() {
  */
 export async function createTexturedTerrainMaterial(params = {}) {
     const textures = await loadDefaultTerrainTextures();
+    // Ensure that if params provides a displacementScale, it's used, otherwise use the default from DefaultTerrainMaterialParams
+    const effectiveDisplacementScale = params.displacementScale !== undefined
+        ? params.displacementScale
+        : DefaultTerrainMaterialParams.displacementScale;
+
     return createTerrainMaterial({
-        ...params,
-        ...textures,
-        displacementScale: params.displacementScale || 0.2
+        ...DefaultTerrainMaterialParams, // Apply general defaults first
+        ...textures,                    // Apply loaded textures
+        ...params,                      // Override with specific params
+        displacementScale: effectiveDisplacementScale, // Ensure correct displacement scale
     });
 }
 
 export const createTerrainMaterial = (params = {}) => {
+    // Combine provided params with defaults. Provided params override defaults.
+    const effectiveParams = { ...DefaultTerrainMaterialParams, ...params };
+
     const {
-        heightScale = 0.5,
-        rockHeight = 0.6,
-        moistureScale = 0.8,
-        moistureNoiseScale = 0.05,
-        terrainBlendSharpness = 1.5,
-        normalStrength = 0.5,
-        specularIntensity = 0.3,
-        roughness = 0.7,
-        detailScale = 0.1,
-        microDetailScale = 0.5,
-        textureResolution = 1.0,
-        gravelIntensity = 0.5,
-        gravelScale = 12.0,
-        sedimentCurvatureIntensity = 0.5,
-        snowHeight = 0.8,
-        snowSharpness = 1.0,
-        vegetationDensity = 0.7,
-        rockVariation = 0.2,
-        albedoMap = null,
-        normalMap = null,
-        roughnessMap = null,
-        displacementMap = null,
-        displacementScale = 0.2,
-        textureScale = 1.0,
-        normalMapStrength = 1.0,
-        roughnessMultiplier = 1.0,
-        albedoIntensity = 0.6
-    } = params;
+        heightScale,
+        rockHeight,
+        moistureScale,
+        moistureNoiseScale,
+        terrainBlendSharpness,
+        normalStrength,
+        specularIntensity,
+        roughness,
+        detailScale,
+        microDetailScale,
+        textureResolution,
+        gravelIntensity,
+        gravelScale,
+        sedimentCurvatureIntensity,
+        snowHeight,
+        snowSharpness,
+        vegetationDensity,
+        rockVariation,
+        albedoMap,
+        normalMap,
+        roughnessMap,
+        displacementMap,
+        displacementScale,
+        textureScale,
+        normalMapStrength,
+        roughnessMultiplier,
+        albedoIntensity
+    } = effectiveParams;
 
     // Enable defines if maps are provided
     const defines = {};
@@ -117,30 +165,40 @@ export const createTerrainMaterial = (params = {}) => {
     return material;
 };
 
+export const DefaultWaterParams = {
+    waterLevel: 0.0,
+    waterColor: new THREE.Color(0x0077be), // Store as THREE.Color object
+    segments: 32,
+    useLOD: true,
+    waterOpacity: 0.4,
+};
+
 export const createWaterPlane = (size, params = {}) => {
+    const effectiveParams = { ...DefaultWaterParams, ...params };
+
+    // Ensure waterColor is a THREE.Color object if provided as string/hex
+    if (typeof effectiveParams.waterColor === 'string' || typeof effectiveParams.waterColor === 'number') {
+        effectiveParams.waterColor = new THREE.Color(effectiveParams.waterColor);
+    } else if (Array.isArray(effectiveParams.waterColor) && effectiveParams.waterColor.length === 3) {
+        // Assuming array is [r, g, b] normalized 0-1
+        effectiveParams.waterColor = new THREE.Color(effectiveParams.waterColor[0], effectiveParams.waterColor[1], effectiveParams.waterColor[2]);
+    }
+
+
     const {
-        waterLevel = 0.0,
-        waterColor = new THREE.Color(0x0077be),
-        segments = 32,
-        useLOD = true,
-        waterOpacity = 0.4 // Default to 40% opacity
-    } = params;
+        waterLevel,
+        waterColor, // Now guaranteed to be a THREE.Color object or default
+        segments,
+        useLOD,
+        waterOpacity
+    } = effectiveParams;
 
     const createWaterGeometry = (segments) => new THREE.PlaneGeometry(size, size, segments, segments);
     const clippingPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -waterLevel + 0.01);
-    let colorObj;
-    if (typeof waterColor === 'string') {
-        // Ensure color string starts with #
-        colorObj = new THREE.Color(waterColor.startsWith('#') ? waterColor : `#${waterColor}`);
-    } else if (waterColor && typeof waterColor.toArray === 'function') {
-        colorObj = waterColor;
-    } else {
-        colorObj = new THREE.Color(0x0077be);
-    }
 
     const waterMaterial = new THREE.ShaderMaterial({
         uniforms: {
-            waterColor: { value: colorObj.toArray() },
+            waterColor: { value: waterColor.toArray() }, // Use the processed THREE.Color object
             waterOpacity: { value: waterOpacity }
         },
         vertexShader: waterVertexShader,

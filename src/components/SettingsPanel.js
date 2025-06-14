@@ -5,7 +5,7 @@ import { FaMountain, FaSlidersH, FaWater, FaLeaf, FaLayerGroup, FaEraser, FaMagi
 import ScatterLayerCard from './ScatterLayerCard';
 
 // eslint-disable-next-line no-unused-vars
-const SettingsPanel = React.memo(({ params, onParamChange, onReset }) => {
+const SettingsPanel = React.memo(({ params, onParamChange, onReset, defaultScatterLayerParams }) => {
   const handleParamChange = (key, value) => {
     onParamChange(key, value);
   };
@@ -138,122 +138,146 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset }) => {
       </div>
 
       <div style={{ padding: '0 8px 32px 8px' }}>
+        {/* Assuming 'params' directly contains these generation settings based on App.js initialAppSettings structure */}
         <CollapsibleSection title="Terrain Shape">
-          <ParameterControl label="Size" type="range" min="2" max="100" step="1" value={params.size} onChange={v => {
-            handleParamChange('size', +v);
-            handleParamChange('width', +v);
-            handleParamChange('height', +v);
-          }} description="Controls both width and height of the terrain." />
-          <ParameterControl label="Mesh Resolution" type="range" min="32" max="4096" step="32" value={params.meshResolution || 512} onChange={v => handleParamChange('meshResolution', +v)} description="Controls mesh grid resolution for preview/export (higher = slower)." />
-          <ParameterControl label="Use Export Resolution" type="checkbox" value={params.useExportResolution || false} onChange={v => handleParamChange('useExportResolution', v)} description="Toggle to preview at full export resolution (4096²)." />
+          <ParameterControl label="Size" type="range" min="2" max="100" step="1" value={params.size} onChange={v => handleParamChange('size', +v)} description="Controls the world size of the terrain." />
+          <ParameterControl label="Mesh Resolution" type="range" min="32" max="1024" step="32" value={params.meshResolution || 512} onChange={v => handleParamChange('meshResolution', +v)} description="Resolution of the underlying heightmap grid." />
+          {/* 'useExportResolution' might be a local UI state or a specific app feature not directly part of core params */}
+          {/* <ParameterControl label="Use Export Resolution" type="checkbox" value={params.useExportResolution || false} onChange={v => handleParamChange('useExportResolution', v)} description="Toggle to preview at full export resolution (4096²)." /> */}
         </CollapsibleSection>
         <CollapsibleSection title="Elevation">
-          <ParameterControl label="Height Range" type="range" min="0" max="5" step="0.1" value={params.amplitude} onChange={v => handleParamChange('amplitude', +v)} description="Maximum elevation difference." />
+          <ParameterControl label="Amplitude" type="range" min="0" max="5" step="0.1" value={params.amplitude} onChange={v => handleParamChange('amplitude', +v)} description="Maximum elevation difference." />
           <ParameterControl label="Octaves" type="range" min="1" max="12" step="1" value={params.octaves} onChange={v => handleParamChange('octaves', +v)} />
           <ParameterControl label="Lacunarity" type="range" min="1" max="4" step="0.1" value={params.lacunarity} onChange={v => handleParamChange('lacunarity', +v)} />
           <ParameterControl label="Gain" type="range" min="0" max="1" step="0.05" value={params.gain} onChange={v => handleParamChange('gain', +v)} />
+          <ParameterControl label="Frequency" type="range" min="0.01" max="1.0" step="0.01" value={params.frequency} onChange={v => handleParamChange('frequency', +v)} description="Initial noise frequency." />
+          <ParameterControl label="Seed" type="number" min="0" max="999999" step="1" value={params.seed} onChange={v => handleParamChange('seed', +v)} />
         </CollapsibleSection>
         <CollapsibleSection title="Ridged Noise" defaultOpen={false}>
-          <ParameterControl label="Ridged" type="checkbox" value={params.ridged} onChange={v => handleParamChange('ridged', v)} />
+          {/* Assuming 'ridged' is a root param if it's not in HeightmapDefaultParams from the service */}
+          <ParameterControl label="Enable Ridged Noise" type="checkbox" value={params.ridged || false} onChange={v => handleParamChange('ridged', v)} />
           <ParameterControl label="Ridged Offset" type="range" min="0" max="1" step="0.1" value={params.ridgedOffset} onChange={v => handleParamChange('ridgedOffset', +v)} />
         </CollapsibleSection>
         <CollapsibleSection title="Worley Noise" defaultOpen={false}>
           <ParameterControl 
             label="Points" 
             type="range" 
-            min="128" 
-            max="4096" 
-            step="128" 
-            value={params.worleyPoints || 512} 
+            min="8"
+            max="1024"
+            step="8"
+            value={params.worleyPoints || 256} // From GenDefaults
             onChange={v => handleParamChange('worleyPoints', +v)} 
             description="Number of points for Worley noise generation." 
           />
-          <ParameterControl 
-            label="Weight" 
-            type="range" 
-            min="0" 
-            max="1" 
-            step="0.1" 
-            value={params.worleyWeight || 0.5} 
-            onChange={v => handleParamChange('worleyWeight', +v)} 
-            description="Weight of Worley noise in the final terrain." 
-          />
+          {/* Assuming worleySeed, worleyWeight, worleyDimension are root params if custom */}
           <ParameterControl 
             label="Seed" 
             type="number" 
             min="0" 
             max="999999" 
             step="1" 
-            value={params.worleySeed || Math.floor(Math.random() * 1000)} 
+            value={params.worleySeed || 0} // From GenDefaults (was missing, added to App.js initialAppSettings)
             onChange={v => handleParamChange('worleySeed', +v)} 
             description="Seed for Worley noise randomization." 
           />
+          {/* <ParameterControl label="Weight" type="range" min="0" max="1" step="0.1" value={params.worleyWeight || 0.5} onChange={v => handleParamChange('worleyWeight', +v)} /> */}
+          {/* <ParameterControl label="Dimension" type="range" min="1" max="3" step="1" value={params.worleyDimension || 2} onChange={v => handleParamChange('worleyDimension', +v)} /> */}
         </CollapsibleSection>
         <CollapsibleSection title="Domain Warping" defaultOpen={false}>
-          <ParameterControl label="Use Domain Warp" type="checkbox" value={params.useDomainWarp} onChange={v => handleParamChange('useDomainWarp', v)} />
-          <ParameterControl label="Warp Type" type="select" value={params.warpType} onChange={v => handleParamChange('warpType', v)} options={[
-            { value: 'fractal', label: 'Fractal' },
-            { value: 'simplex', label: 'Simplex' }
-          ]} />
-          <ParameterControl label="Warp Strength" type="range" min="0" max="1" step="0.05" value={params.warpStrength} onChange={v => handleParamChange('warpStrength', +v)} />
-          <ParameterControl label="Warp Frequency" type="range" min="0" max="1" step="0.05" value={params.warpFrequency} onChange={v => handleParamChange('warpFrequency', +v)} />
-          <ParameterControl label="Warp Iterations" type="range" min="1" max="5" step="1" value={params.warpIterations} onChange={v => handleParamChange('warpIterations', +v)} />
+          {/* Assuming useDomainWarp & warpType are root params if custom */}
+          {/* <ParameterControl label="Use Domain Warp" type="checkbox" value={params.useDomainWarp || false} onChange={v => handleParamChange('useDomainWarp', v)} /> */}
+          {/* <ParameterControl label="Warp Type" type="select" value={params.warpType || 'fractal'} onChange={v => handleParamChange('warpType', v)} options={[ { value: 'fractal', label: 'Fractal' }, { value: 'simplex', label: 'Simplex' } ]} /> */}
+          <ParameterControl label="Domain Warp Strength" type="range" min="0" max="1" step="0.05" value={params.domainWarpStrength} onChange={v => handleParamChange('domainWarpStrength', +v)} />
+          <ParameterControl label="Domain Warp Frequency" type="range" min="0.01" max="0.5" step="0.01" value={params.domainWarpFreq} onChange={v => handleParamChange('domainWarpFreq', +v)} />
+          {/* <ParameterControl label="Warp Iterations" type="range" min="1" max="5" step="1" value={params.warpIterations || 3} onChange={v => handleParamChange('warpIterations', +v)} /> */}
         </CollapsibleSection>
         <CollapsibleSection title="Smoothing" defaultOpen={false}>
-          <ParameterControl label="Enable Smoothing" type="checkbox" value={params.applySmoothing} onChange={v => handleParamChange('applySmoothing', v)} description="Smooth out sharp terrain features." />
-          <ParameterControl label="Smoothing Passes" type="range" min="0" max="10" step="1" value={params.smoothIterations} onChange={v => handleParamChange('smoothIterations', +v)} description="Number of smoothing passes." />
-          <ParameterControl label="Smoothing Strength" type="range" min="0" max="1" step="0.05" value={params.smoothFactor} onChange={v => handleParamChange('smoothFactor', +v)} description="How much each pass smooths the terrain." />
+          {/* Assuming applySmoothing, smoothIterations, smoothFactor are root params if custom */}
+          {/* <ParameterControl label="Enable Smoothing" type="checkbox" value={params.applySmoothing || false} onChange={v => handleParamChange('applySmoothing', v)} /> */}
+          {/* <ParameterControl label="Smoothing Passes" type="range" min="0" max="10" step="1" value={params.smoothIterations || 1} onChange={v => handleParamChange('smoothIterations', +v)} /> */}
+          {/* <ParameterControl label="Smoothing Strength" type="range" min="0" max="1" step="0.05" value={params.smoothFactor || 0.5} onChange={v => handleParamChange('smoothFactor', +v)} /> */}
         </CollapsibleSection>
         <CollapsibleSection title="Surface & Texture">
-          <ParameterControl label="Height Scale" type="range" min={0.1} max={5.0} step={0.1} value={params.heightScale} onChange={value => handleParamChange('heightScale', +value)} description="Controls the exaggeration of height in the texture." />
-          <ParameterControl label="Rock Height" type="range" min={0.1} max={1.0} step={0.1} value={params.rockHeight} onChange={value => handleParamChange('rockHeight', +value)} description="Height at which rock texture appears." />
-          <ParameterControl label="Blend Sharpness" type="range" min={0.1} max={5.0} step={0.1} value={params.terrainBlendSharpness} onChange={value => handleParamChange('terrainBlendSharpness', +value)} description="How sharp the transitions are between textures." />
-          <ParameterControl label="Moisture Scale" type="range" min={0.1} max={5.0} step={0.1} value={params.moistureScale} onChange={value => handleParamChange('moistureScale', +value)} description="Controls the amount of green (vegetation) in the texture." />
-          <ParameterControl label="Moisture Noise" type="range" min={0.01} max={1.0} step={0.01} value={params.moistureNoiseScale} onChange={value => handleParamChange('moistureNoiseScale', +value)} description="Adds randomness to the moisture map." />
-          <ParameterControl label="Texture Resolution" type="range" min={0.5} max={6.0} step={0.1} value={params.textureResolution || 1.0} onChange={value => handleParamChange('textureResolution', +value)} description="Controls the sharpness of the texture." />
-          <ParameterControl label="Albedo Intensity" type="range" min={0} max={1} step={0.01} value={params.albedoIntensity || 0.6} onChange={value => handleParamChange('albedoIntensity', +value)} description="Blend between procedural and texture color (0 = procedural, 1 = texture)." />
+          <ParameterControl label="Height Scale" type="range" min={0.1} max={5.0} step={0.1} value={params.material?.heightScale} onChange={v => handleParamChange('material.heightScale', +v)} description="Controls the exaggeration of height in the procedural texture." />
+          <ParameterControl label="Rock Height" type="range" min={0.1} max={1.0} step={0.1} value={params.material?.rockHeight} onChange={v => handleParamChange('material.rockHeight', +v)} description="Height at which rock texture appears." />
+          <ParameterControl label="Blend Sharpness" type="range" min={0.1} max={5.0} step={0.1} value={params.material?.terrainBlendSharpness} onChange={v => handleParamChange('material.terrainBlendSharpness', +v)} description="How sharp the transitions are between procedural textures." />
+          <ParameterControl label="Moisture Scale" type="range" min={0.1} max={5.0} step={0.1} value={params.material?.moistureScale} onChange={v => handleParamChange('material.moistureScale', +v)} description="Controls the amount of green (vegetation) in the procedural texture." />
+          <ParameterControl label="Moisture Noise" type="range" min={0.01} max={1.0} step={0.01} value={params.material?.moistureNoiseScale} onChange={v => handleParamChange('material.moistureNoiseScale', +v)} description="Adds randomness to the moisture map for procedural texture." />
+          <ParameterControl label="Texture Resolution" type="range" min={0.5} max={6.0} step={0.1} value={params.material?.textureResolution || 1.0} onChange={v => handleParamChange('material.textureResolution', +v)} description="Controls the detail scale of procedural textures." />
+          <ParameterControl label="Albedo Intensity" type="range" min={0} max={1} step={0.01} value={params.material?.albedoIntensity || 0.6} onChange={v => handleParamChange('material.albedoIntensity', +v)} description="Blend between procedural color and texture map color (if texture map provided)." />
+          {/* Texture map URL controls could be added here if desired, e.g., params.material.albedoMapUrl */}
+          <ParameterControl label="Texture Scale" type="range" min={1.0} max={100.0} step={1.0} value={params.material?.textureScale || 20.0} onChange={v => handleParamChange('material.textureScale', +v)} description="Scale of applied PBR textures." />
+          <ParameterControl label="Normal Map Strength" type="range" min={0.0} max={2.0} step={0.05} value={params.material?.normalMapStrength || 1.0} onChange={v => handleParamChange('material.normalMapStrength', +v)} />
+          <ParameterControl label="Displacement Scale" type="range" min={0.0} max={0.5} step={0.001} value={params.material?.displacementScale || 0.02} onChange={v => handleParamChange('material.displacementScale', +v)} />
+          <ParameterControl label="Roughness Multiplier" type="range" min={0.0} max={2.0} step={0.05} value={params.material?.roughnessMultiplier || 1.0} onChange={v => handleParamChange('material.roughnessMultiplier', +v)} />
+
         </CollapsibleSection>
         <CollapsibleSection title="Water" defaultOpen={false}>
-          <ParameterControl label="Enable Water" type="checkbox" value={params.enableWater} onChange={value => handleParamChange('enableWater', +value)} description="Add a water plane at a given height." />
-          <ParameterControl label="Water Level" type="range" min={0} max={1} step={0.01} value={params.waterLevel} onChange={value => handleParamChange('waterLevel', +value)} description="Height of the water plane." />
+          <ParameterControl label="Enable Water" type="checkbox" value={params.water?.enableWater || false} onChange={v => handleParamChange('water.enableWater', v)} description="Add a water plane." />
+          <ParameterControl label="Water Level" type="range" min={0} max={1} step={0.01} value={params.water?.waterLevel || 0} onChange={v => handleParamChange('water.waterLevel', +v)} description="Height of the water plane (relative to base, affected by Height Scale)." />
+          <ParameterControl label="Water Opacity" type="range" min={0} max={1} step={0.01} value={params.water?.waterOpacity || 0.4} onChange={v => handleParamChange('water.waterOpacity', +v)} />
+          {/* Water color could be a color picker component if available, or simple text input for hex */}
+          {/* <ParameterControl label="Water Color" type="text" value={params.water?.waterColor.getHexString() || '#0077be'} onChange={v => handleParamChange('water.waterColor', v)} /> */}
         </CollapsibleSection>
         <CollapsibleSection title="Scatter Layers">
           {(() => {
-            const scatterLayers = Array.isArray(params.scatterLayers) ? params.scatterLayers : [];
+            const currentScatterParams = params.scatter || { scatterLayers: [] };
+            const scatterLayers = Array.isArray(currentScatterParams.scatterLayers) ? currentScatterParams.scatterLayers : [];
             return scatterLayers.map((layer, idx) => (
               <ScatterLayerCard
-                key={layer.id}
+                key={layer.id || idx} // Ensure key is stable, use idx as fallback
                 layer={layer}
                 idx={idx}
+                // layers prop for ScatterLayerCard should receive the current array for its own logic
                 layers={scatterLayers}
-                onParamChange={handleParamChange}
-                updateScatterLayer={updateScatterLayer}
-                params={params}
+                // onParamChange for ScatterLayerCard needs to be specific about its path
+                // This means ScatterLayerCard's internal onParamChange needs to prepend `scatter.scatterLayers.${idx}`
+                // For simplicity here, we assume ScatterLayerCard calls a specific update function
+                // that provides the full new layer object or changes.
+                // The existing updateScatterLayer helper in SettingsPanel is good.
+                // It gets called by ScatterLayerCard, then SettingsPanel calls the main onParamChange.
+                onLayerChange={(layerIndex, updatedLayer) => {
+                  const newLayers = scatterLayers.slice();
+                  newLayers[layerIndex] = updatedLayer;
+                  handleParamChange('scatter.scatterLayers', newLayers);
+                }}
+                onLayerRemove={(layerIndex) => {
+                  const newLayers = scatterLayers.filter((_, i) => i !== layerIndex);
+                  handleParamChange('scatter.scatterLayers', newLayers);
+                }}
+                // updateScatterLayer helper is used internally by ScatterLayerCard or similar logic
+                // For now, let's assume ScatterLayerCard is modified to call onLayerChange/onLayerRemove
+                // Or, if ScatterLayerCard calls onParamChange with 'scatterLayers' and the full new array, that's also fine.
+                // The provided `updateScatterLayer` helper seems designed for this:
+                onParamChange={(layerProp, value, layerIdx) => { // This is what ScatterLayerCard might call
+                    const changedLayer = { ...scatterLayers[layerIdx], [layerProp]: value };
+                    const newLayersArray = updateScatterLayer(scatterLayers, layerIdx, changedLayer);
+                    handleParamChange('scatter.scatterLayers', newLayersArray);
+                }}
+                // The line below is if ScatterLayerCard uses the updateScatterLayer prop directly
+                // updateScatterLayer={(idx, changes) => handleParamChange('scatter.scatterLayers', updateScatterLayer(scatterLayers, idx, changes))}
+                params={params} // Pass root params for context if needed
               />
             ));
           })()}
           <div style={{ position: 'relative', marginTop: 8 }}>
             <button
               onClick={() => {
-                const scatterLayers = Array.isArray(params.scatterLayers) ? params.scatterLayers : [];
-                const nextId = scatterLayers.length > 0 ? Math.max(...scatterLayers.map(l => l.id)) + 1 : 1;
-                const newLayer = {
-                  id: nextId,
-                  enabled: true,
-                  label: `Layer ${nextId}`,
-                  objectType: 'tree',
-                  scatterOn: 'all',
-                  density: 0.2,
-                  pointRadius: 2,
-                  scale: 0.2,
-                  jitter: 0.4,
-                  maxSlopeDeg: 45,
-                  maskThreshold: 0.5,
-                  seed: 42,
-                  debug: false,
-                  maxPoints: 2000
-                };
-                handleParamChange('scatterLayers', [...scatterLayers, newLayer]);
+                const currentScatterParams = params.scatter || { scatterLayers: [] };
+                const scatterLayers = Array.isArray(currentScatterParams.scatterLayers) ? currentScatterParams.scatterLayers : [];
+                const nextId = scatterLayers.length > 0 ? Math.max(0, ...scatterLayers.map(l => l.id || 0)) + 1 : 1;
+
+                // Use defaultScatterLayerParams prop, ensuring a deep copy
+                const newLayer = defaultScatterLayerParams
+                  ? JSON.parse(JSON.stringify(defaultScatterLayerParams))
+                  : {}; // Fallback to empty if prop not provided
+
+                newLayer.id = nextId;
+                newLayer.name = `Layer ${nextId}`; // Ensure name is updated
+                if (defaultScatterLayerParams && !newLayer.objectType) newLayer.objectType = defaultScatterLayerParams.objectType || 'tree_1';
+
+
+                handleParamChange('scatter.scatterLayers', [...scatterLayers, newLayer]);
               }}
               style={{
                 position: 'absolute',
@@ -292,74 +316,8 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset }) => {
           <ParameterControl label="Min Volume" type="range" min={0.001} max={0.2} step={0.001} value={params.erosionMinVolume ?? 0.01} onChange={v => handleParamChange('erosionMinVolume', +v)} description="Volume below which droplet disappears." />
           <ParameterControl label="Initial Volume" type="range" min={0.1} max={5} step={0.1} value={params.erosionInitialVolume ?? 0.1} onChange={v => handleParamChange('erosionInitialVolume', +v)} description="Starting water volume of each droplet." />
           <ParameterControl label="Initial Speed" type="range" min={0.1} max={5} step={0.1} value={params.erosionInitialSpeed ?? 1.0} onChange={v => handleParamChange('erosionInitialSpeed', +v)} description="Starting speed of each droplet." />
-          <ParameterControl label="Max Droplet Lifetime" type="number" min={1} max={100} step={1} value={params.erosionMaxDropletLifetime ?? 30} onChange={v => handleParamChange('erosionMaxDropletLifetime', +v)} description="Max steps per droplet." />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-            <button
-              onClick={() => params.onStartErosion && params.onStartErosion()}
-              style={{
-                padding: '8px 18px',
-                background: 'linear-gradient(90deg, #e46e6e 60%, #6ec1e4 100%)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '7px',
-                fontWeight: 700,
-                fontSize: 15,
-                cursor: params.erosionRunning ? 'not-allowed' : 'pointer',
-                boxShadow: '0 2px 8px 0 rgba(110,193,228,0.08)',
-                transition: 'background 0.2s, box-shadow 0.2s',
-                opacity: params.erosionRunning ? 0.5 : 1
-              }}
-              disabled={params.erosionRunning}
-            >
-              Start Erosion
-            </button>
-            <button
-              onClick={() => params.onStopErosion && params.onStopErosion()}
-              style={{
-                padding: '8px 18px',
-                background: 'linear-gradient(90deg, #6ec1e4 60%, #e46e6e 100%)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '7px',
-                fontWeight: 700,
-                fontSize: 15,
-                cursor: !params.erosionRunning ? 'not-allowed' : 'pointer',
-                boxShadow: '0 2px 8px 0 rgba(110,193,228,0.08)',
-                transition: 'background 0.2s, box-shadow 0.2s',
-                opacity: !params.erosionRunning ? 0.5 : 1
-              }}
-              disabled={!params.erosionRunning}
-            >
-              Stop Erosion
-            </button>
-            {params.onResetErosion && (
-              <button
-                onClick={() => params.onResetErosion()}
-                style={{
-                  padding: '8px 18px',
-                  background: 'linear-gradient(90deg, #e46e6e 60%, #fff 100%)',
-                  color: '#23243a',
-                  border: 'none',
-                  borderRadius: '7px',
-                  fontWeight: 700,
-                  fontSize: 15,
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px 0 rgba(110,193,228,0.08)',
-                  transition: 'background 0.2s, box-shadow 0.2s',
-                }}
-              >
-                Reset Erosion
-              </button>
-            )}
-            {params.erosionProgress !== undefined && (
-              <div style={{ flex: 1, height: 18, background: '#23243a', borderRadius: 8, overflow: 'hidden', minWidth: 80 }}>
-                <div style={{ width: `${params.erosionProgress * 100}%`, height: '100%', background: '#e46e6e', transition: 'width 0.2s' }} />
-              </div>
-            )}
-            {params.erosionProgress !== undefined && (
-              <span style={{ color: '#e46e6e', fontWeight: 600, fontSize: 14, marginLeft: 8 }}>{Math.round(params.erosionProgress * 100)}%</span>
-            )}
-          </div>
+            <ParameterControl label="Max Droplet Lifetime" type="number" min={1} max={100} step={1} value={params.erosion?.maxDropletLifetime ?? 30} onChange={v => handleParamChange('erosion.maxDropletLifetime', +v)} description="Max steps per droplet." />
+            {/* Erosion action buttons and progress display are removed from SettingsPanel */}
         </CollapsibleSection>
       </div>
     </div>
@@ -367,41 +325,10 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset }) => {
 });
 
 SettingsPanel.propTypes = {
-  params: PropTypes.shape({
-    width: PropTypes.number.isRequired,
-    height: PropTypes.number.isRequired,
-    widthSegments: PropTypes.number.isRequired,
-    heightSegments: PropTypes.number.isRequired,
-    amplitude: PropTypes.number.isRequired,
-    frequency: PropTypes.number.isRequired,
-    octaves: PropTypes.number.isRequired,
-    lacunarity: PropTypes.number.isRequired,
-    gain: PropTypes.number.isRequired,
-    ridged: PropTypes.bool.isRequired,
-    ridgedOffset: PropTypes.number.isRequired,
-    useDomainWarp: PropTypes.bool.isRequired,
-    warpType: PropTypes.string.isRequired,
-    warpStrength: PropTypes.number.isRequired,
-    warpFrequency: PropTypes.number.isRequired,
-    warpIterations: PropTypes.number.isRequired,
-    applySmoothing: PropTypes.bool.isRequired,
-    smoothIterations: PropTypes.number.isRequired,
-    smoothFactor: PropTypes.number.isRequired,
-    heightScale: PropTypes.number.isRequired,
-    rockHeight: PropTypes.number.isRequired,
-    terrainBlendSharpness: PropTypes.number.isRequired,
-    moistureScale: PropTypes.number.isRequired,
-    moistureNoiseScale: PropTypes.number.isRequired,
-    textureResolution: PropTypes.number.isRequired,
-    gravelIntensity: PropTypes.number.isRequired,
-    gravelScale: PropTypes.number.isRequired,
-    sedimentCurvatureIntensity: PropTypes.number.isRequired,
-    enableWater: PropTypes.bool.isRequired,
-    waterLevel: PropTypes.number.isRequired,
-    scatterLayers: PropTypes.array.isRequired
-  }).isRequired,
+    params: PropTypes.object.isRequired, // Updated to generic object, specific shape is now complex due to nesting
   onParamChange: PropTypes.func.isRequired,
-  onReset: PropTypes.func.isRequired
+    onReset: PropTypes.func.isRequired,
+    defaultScatterLayerParams: PropTypes.object, // Prop for scatter defaults
 };
 
 SettingsPanel.displayName = 'SettingsPanel';

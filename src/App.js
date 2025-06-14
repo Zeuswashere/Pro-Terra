@@ -1,431 +1,248 @@
-// Constants for camera, helpers, and shadow
-const CAMERA_POSITION = [15, 15, 15];
-const CAMERA_FOV = 50;
-const GRID_HELPER_ARGS = [20, 20, '#444', '#222'];
-const AXES_HELPER_ARGS = [5];
+import React, { useState, useCallback, useMemo, useEffect } from 'react'; // Removed useRef
 
-import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+// SettingsPanel and PresetPanel are still used
 import SettingsPanel from './components/SettingsPanel';
-import PresetPanel from './components/PresetPanel';
-import { createImprovedNoise2D, generateTerrain } from './services/TerrainGeneratorService';
-import { createTexturedTerrainMaterial, createWaterPlane } from './services/TerrainMaterialService';
+import PresetPanel from './components/PresetPanel'; // Assuming this is still used
+
+// Hook for persistent state
 import usePersistentState from './hooks/usePersistentState';
-import Water from './components/Water';
-import { generateScatterMask, generatePoissonScatterPoints } from './services/ScatterService';
-import BillboardTree, { InstancedBillboardTrees } from './components/BillboardTree';
-import InstancedGrassClumps from './components/InstancedGrassClumps';
-import * as THREE from 'three';
-import ErosionWorkerService from './services/ErosionWorkerService';
-import TerrainWorkerService from './services/TerrainWorkerService';
 
-// Default parameters
-const defaultParams = {
-  size: 10,
-  meshResolution: 128,
-  
-  // Multi-layered noise parameters
-  amplitude: 1.0, // Height Range
-  octaves: 6,
-  lacunarity: 2.0,
-  gain: 0.5,
-  seed: Math.random() * 1000,
-  
-  // Worley noise parameters
-  worleyPoints: 256,
-  worleySeed: Math.random() * 1000,
-  worleyWeight: 0.5,
-  worleyDimension: 2,
-  
-  // Ridged noise
-  ridged: false,
-  ridgedOffset: 0.5,
-  
-  // Domain warping
-  useDomainWarp: true,
-  warpType: 'fractal',
-  warpStrength: 0.5,
-  warpFrequency: 0.02,
-  warpIterations: 3,
-  
-  // Water
-  waterLevel: 0.0,
-  
-  // Smoothing
-  applySmoothing: false,
-  smoothIterations: 1,
-  smoothFactor: 0.5,
-  
-  // Procedural texturing
-  heightScale: 0.5,
-  rockHeight: 0.6,
-  moistureScale: 0.8,
-  moistureNoiseScale: 0.05,
-  terrainBlendSharpness: 1.5,
-  
-  // Water parameters
-  enableWater: false,
-  
-  // Texture resolution
-  textureResolution: 1.0,
-  
-  // Enhanced texturing
-  gravelIntensity: 0.5,
-  gravelScale: 12.0,
-  sedimentCurvatureIntensity: 0.5,
+// Import new Viewport components
+import TwoDViewport from './components/TwoDViewport';
+import ThreeDViewport from './components/ThreeDViewport';
 
-  // Texture maps and advanced texturing
-  albedoMapUrl: '',
-  normalMapUrl: '',
-  roughnessMapUrl: '',
-  displacementMapUrl: '',
-  textureScale: 20.0,
-  normalMapStrength: 1.0,
-  displacementScale: 0.02,
-  roughnessMultiplier: 1.0,
-  albedoIntensity: 0.6,
+// Import Services & their default parameter objects
+import HeightmapGenerationService, { HeightmapDefaultParams as GenDefaults } from './services/HeightmapGenerationService';
+import ErosionService from './services/ErosionService';
+import ScatterService from './services/ScatterService';
+import TerrainMaterialService, { DefaultTerrainMaterialParams, DefaultWaterParams } from './services/TerrainMaterialService'; // DefaultTextureURLs not directly used in App.js state
+import HeightmapDisplayService from './services/HeightmapDisplayService';
 
-  // Empty scatter layers by default
-  scatterLayers: []
-};
-
-// Placeholder components for Rock and Grass
-const Rock = ({ position, rotation, scale }) => (
-  <mesh position={position} rotation={rotation} scale={scale} castShadow>
-    <dodecahedronGeometry args={[0.18, 0]} />
-    <meshStandardMaterial color="#888" />
-  </mesh>
-);
-const Grass = ({ position, rotation, scale }) => (
-  <mesh position={position} rotation={rotation} scale={scale} castShadow>
-    <cylinderGeometry args={[0.05, 0.05, 0.3, 6]} />
-    <meshStandardMaterial color="#3a5" />
-  </mesh>
-);
-
-const OBJECT_COMPONENTS = {
-  tree: BillboardTree,
-  rock: Rock,
-  grass: Grass
-};
-
-// Helper to limit points
-function limitPoints(points, maxPoints) {
-  if (!maxPoints || points.length <= maxPoints) return points;
-  // Uniformly sample maxPoints from points
-  const step = points.length / maxPoints;
-  const result = [];
-  for (let i = 0; i < maxPoints; i++) {
-    result.push(points[Math.floor(i * step)]);
-  }
-  return result;
-}
-
-// Helper to coerce numeric params to numbers
-function coerceNumericParams(params) {
-  const numericKeys = [
-    'size', 'meshResolution',
-    'amplitude', 'octaves', 'lacunarity', 'gain',
-    'ridgedOffset', 'warpStrength', 'warpFrequency', 'warpIterations',
-    'waterLevel',
-    'smoothIterations', 'smoothFactor',
-    'heightScale', 'rockHeight', 'terrainBlendSharpness', 'moistureScale', 'moistureNoiseScale',
-    'textureResolution', 'gravelIntensity', 'gravelScale', 'sedimentCurvatureIntensity'
-  ];
-  const out = { ...params };
-  for (const key of numericKeys) {
-    if (typeof out[key] === 'string') out[key] = +out[key];
-  }
-  // Also coerce scatterLayers numeric fields
-  if (Array.isArray(out.scatterLayers)) {
-    out.scatterLayers = out.scatterLayers
-      .filter(l => l && typeof l === 'object') // Remove undefined/null
-      .map(layer => {
-        const layerNumeric = [
-          'density', 'pointRadius', 'scale', 'jitter', 'maxSlopeDeg', 'maskThreshold', 'seed', 'maxPoints'
-        ];
-        const l = { ...layer };
-        for (const k of layerNumeric) {
-          if (typeof l[k] === 'string') l[k] = +l[k];
-        }
-        // Ensure seed is present and valid
-        if (typeof l.seed !== 'number' || isNaN(l.seed)) l.seed = Math.floor(Math.random() * 100000);
-        // Ensure scale is present and valid
-        if (typeof l.scale !== 'number' || isNaN(l.scale)) l.scale = 1;
-        // Ensure jitter is present and valid
-        if (typeof l.jitter !== 'number' || isNaN(l.jitter)) l.jitter = 0;
-        // Ensure enabled is present and valid
-        if (typeof l.enabled !== 'boolean') l.enabled = true;
-        // Add other defaults as needed
-        return l;
-      });
-  }
-  if (out.sedimentCurvatureIntensity === undefined) out.sedimentCurvatureIntensity = 0.5;
-  return out;
-}
 
 function App() {
-  // State for parameters
-  const [rawParams, setParams] = usePersistentState('terrainParams', defaultParams);
-  const params = coerceNumericParams(rawParams);
-  // Ref for the 2D heightmap canvas
-  const canvasRef = useRef(null);
-  // Erosion state and refs
-  const [erosionRunning, setErosionRunning] = useState(false);
-  const [erosionProgress, setErosionProgress] = useState(undefined);
-  const [terrainRunning, setTerrainRunning] = useState(false);
-  const [terrainProgress, setTerrainProgress] = useState(undefined);
-  const erosionWorkerRef = useRef(null);
-  const terrainWorkerRef = useRef(null);
-  const heightMapRef = useRef({ hm: null, width: 0, height: 0, minH: 0, maxH: 0, original: null });
-  const [heightmapGenerated, setHeightmapGenerated] = useState(false);
-  // 3D refresh logic: track when params change during 3D view
-  const [needsRefresh, setNeedsRefresh] = useState(false);
-  const lastParamsStr = useRef(JSON.stringify(params));
-  // Handler to generate and render a 2D heightmap
-  const handleGenerateHeightmap = useCallback(() => {
-    const noise2D = createImprovedNoise2D(params.seed);
-    // Use meshResolution directly for 2D map
-    const resolution = params.meshResolution || 512;
-    const { geometry } = generateTerrain({ ...params, frequency: 0.15, meshResolution: resolution }, noise2D);
-    const positions = geometry.attributes.position.array;
-    const width = resolution + 1;
-    const height = resolution + 1;
-    // Build heightmap array and find min/max
-    let minH = Infinity, maxH = -Infinity;
-    const hm = new Float32Array(width * height);
-    for (let i = 0; i < width * height; i++) {
-      const h = positions[i * 3 + 2];
-      hm[i] = h;
-      if (h < minH) minH = h;
-      if (h > maxH) maxH = h;
-    }
-    // Store raw heightmap and stats for erosion
-    const original = new Float32Array(hm);
-    heightMapRef.current = { hm, width, height, minH, maxH, original };
-    // Draw to canvas
-    const canvas = canvasRef.current;
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    const img = ctx.createImageData(width, height);
-    for (let i = 0; i < width * height; i++) {
-      const normalized = Math.floor(((hm[i] - minH) / (maxH - minH || 1)) * 255);
-      img.data[4 * i] = normalized;
-      img.data[4 * i + 1] = normalized;
-      img.data[4 * i + 2] = normalized;
-      img.data[4 * i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    setHeightmapGenerated(true);
-  }, [params, setHeightmapGenerated]);
-  
-  // Handler to export current heightmap as PNG
-  const handleExportHeightmap = useCallback(() => {
-    const { hm, width, height, minH, maxH } = heightMapRef.current;
-    if (!hm) return;
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = width;
-    exportCanvas.height = height;
-    const ctx2 = exportCanvas.getContext('2d');
-    const imgData = ctx2.createImageData(width, height);
-    for (let i = 0; i < width * height; i++) {
-      const norm = Math.floor(((hm[i] - minH) / (maxH - minH || 1)) * 255);
-      imgData.data[4 * i] = norm;
-      imgData.data[4 * i + 1] = norm;
-      imgData.data[4 * i + 2] = norm;
-      imgData.data[4 * i + 3] = 255;
-    }
-    ctx2.putImageData(imgData, 0, 0);
-    exportCanvas.toBlob(blob => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `heightmap_${width}x${height}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    }, 'image/png');
-  }, []);
+  // Instantiate Services
+  const heightmapGenerationService = useMemo(() => new HeightmapGenerationService(), []);
+  const erosionService = useMemo(() => new ErosionService(), []); // Has defaultParams instance property
+  const scatterService = useMemo(() => new ScatterService(), []); // Has defaultLayerParams instance property
+  const terrainMaterialService = useMemo(() => new TerrainMaterialService(), []); // Methods are direct exports, no defaults needed from instance
+  const heightmapDisplayService = useMemo(() => new HeightmapDisplayService(), []); // Pure functions, no defaults
 
-  // Erosion simulation parameters and handlers
-  const erosionDroplets = params.erosionDroplets || 100000;
-  const erosionBatchSize = params.erosionBatchSize || 1000;
-  const erosionParams = {
-    inertia: params.erosionInertia ?? 0.05,
-    friction: params.erosionFriction ?? 0.02,
-    sedimentCapacityFactor: params.erosionSedimentCapacity ?? 4,
-    depositionRate: params.erosionDepositionRate ?? 0.3,
-    evaporationRate: params.erosionEvaporationRate ?? 0.01,
-    minVolume: params.erosionMinVolume ?? 0.01,
-    initialVolume: params.erosionInitialVolume ?? 1.0,
-    initialSpeed: params.erosionInitialSpeed ?? 1.0,
-    maxDropletLifetime: params.erosionMaxDropletLifetime ?? 30
-  };
-  const handleStartErosion = useCallback(() => {
-    const { width, height, original } = heightMapRef.current;
-    if (!original) return;
-    const worker = new ErosionWorkerService();
-    erosionWorkerRef.current = worker;
-    setErosionRunning(true);
-    setErosionProgress(0);
-    worker.init(width, height, original, erosionParams, erosionDroplets).then(() => {
-    function runBatch() {
-        worker.step(erosionBatchSize).then(({ alive, heightMap }) => {
-          let newMin = Infinity, newMax = -Infinity;
-          for (const v of heightMap) { if (v < newMin) newMin = v; if (v > newMax) newMax = v; }
-          heightMapRef.current.hm = heightMap;
-          heightMapRef.current.minH = newMin;
-          heightMapRef.current.maxH = newMax;
-          const ctx = canvasRef.current.getContext('2d');
-          const img2 = ctx.createImageData(width, height);
-          for (let i = 0; i < width * height; i++) {
-            const norm = Math.floor(((heightMap[i] - newMin) / (newMax - newMin || 1)) * 255);
-            img2.data[4 * i] = norm;
-            img2.data[4 * i + 1] = norm;
-            img2.data[4 * i + 2] = norm;
-            img2.data[4 * i + 3] = 255;
-          }
-          ctx.putImageData(img2, 0, 0);
-          setErosionProgress((erosionDroplets - alive) / erosionDroplets);
-          if (alive) setTimeout(runBatch, 0);
-          else setErosionRunning(false);
-        });
-    }
-    runBatch();
+  // Construct initialAppSettings by merging defaults from services
+  const initialAppSettings = useMemo(() => {
+    const hgDefaults = GenDefaults || {}; // HeightmapGenerationService.HeightmapDefaultParams
+    const erDefaults = erosionService.defaultParams || {}; // ErosionService defaults
+
+    // For ScatterService, defaultLayerParams is for one layer.
+    // App.js currentParams might store an array of layers.
+    // For top-level general scatter settings, we can pick some, or SettingsPanel will manage layers.
+    // Let's include a general 'scatter' section.
+    const scDefaults = {
+        density: scatterService.defaultLayerParams.density,
+        pointRadius: scatterService.defaultLayerParams.pointRadius,
+        maxSlopeDeg: scatterService.defaultLayerParams.maxSlopeDeg,
+        // scatterLayers will be an array managed by SettingsPanel, initialized empty or with one default layer.
+        scatterLayers: [JSON.parse(JSON.stringify(scatterService.defaultLayerParams))] // Deep copy one layer as example
+    };
+
+    const tmDefaults = DefaultTerrainMaterialParams || {}; // TerrainMaterialService defaults
+    const twDefaults = DefaultWaterParams || {}; // TerrainMaterialService water defaults
+
+    // Define a structure for currentParams based on these defaults
+    return {
+      // Heightmap Generation section (flat for now, or could be nested e.g., params.generation)
+      size: hgDefaults.size !== undefined ? hgDefaults.size : 1000, // world size
+      meshResolution: hgDefaults.meshResolution !== undefined ? hgDefaults.meshResolution : 512,
+      seed: hgDefaults.seed !== undefined ? hgDefaults.seed : Date.now(),
+      frequency: hgDefaults.frequency,
+      amplitude: hgDefaults.amplitude,
+      octaves: hgDefaults.octaves,
+      lacunarity: hgDefaults.lacunarity,
+      gain: hgDefaults.gain,
+      ridgedOffset: hgDefaults.ridgedOffset,
+      worleyPoints: hgDefaults.worleyPoints,
+      domainWarpStrength: hgDefaults.domainWarpStrength,
+      domainWarpFreq: hgDefaults.domainWarpFreq,
+      // ... other generation params from HeightmapDefaultParams
+
+      // Material section
+      material: { ...tmDefaults },
+
+      // Water section
+      water: { ...twDefaults },
+
+      // Erosion section (flat for now, or nested e.g., params.erosion)
+      erosion: { ...erDefaults },
+
+      // Scatter section
+      scatter: { ...scDefaults }, // Contains a default scatterLayers array with one layer
+
+      // Debug section (example)
+      debug: {
+        showGrid: false,
+        showAxes: false,
+      },
+
+      // Lighting (example, can be part of material or a separate section)
+      lighting: {
+        ambientIntensity: 0.5,
+        sunIntensity: 1.0,
+        sunPosition: [100, 100, 50], // Example
+      }
+    };
+  }, [heightmapGenerationService, erosionService, scatterService]); // Dependencies ensure it's stable unless services change (which they don't)
+
+  // New State Management
+  const [currentParams, setCurrentParams] = usePersistentState('appParams_v3', initialAppSettings); // Initialize with merged defaults
+  const [activeView, setActiveView] = useState('2D'); // '2D' or '3D'
+
+  const [heightmapData, setHeightmapData] = useState(null); // Float32Array
+  const [mapDimensions, setMapDimensions] = useState({
+    width: currentParams.meshResolution || initialAppSettings.meshResolution || 512,
+    height: currentParams.meshResolution || initialAppSettings.meshResolution || 512
+  });
+  const [minMaxHeight, setMinMaxHeight] = useState({ minH: 0, maxH: 1 }); // For scaling in 3D view
+
+  const [isAppBusy, setIsAppBusy] = useState(false); // General busy state for any major task
+  const [isHeightmapEverGenerated, setIsHeightmapEverGenerated] = useState(false);
+
+  const handleResetParams = useCallback(() => {
+    setCurrentParams(initialAppSettings);
+    // Reset other app-level state related to generated data
+    setHeightmapData(null);
+    setIsHeightmapEverGenerated(false);
+    setMapDimensions({
+      width: initialAppSettings.meshResolution || 512,
+      height: initialAppSettings.meshResolution || 512
     });
-  }, [erosionBatchSize, erosionDroplets, erosionParams]);
-  const handleStopErosion = useCallback(() => {
-    if (erosionWorkerRef.current) erosionWorkerRef.current.pause();
-    setErosionRunning(false);
-  }, []);
-  const handleResetErosion = useCallback(() => {
-    const orig = heightMapRef.current.original;
-    if (!orig) return;
-    if (erosionWorkerRef.current) {
-      erosionWorkerRef.current.reset(orig).then(() => {
-        const { width, height } = heightMapRef.current;
-        let minH2 = Infinity, maxH2 = -Infinity;
-        for (const v of orig) { if (v < minH2) minH2 = v; if (v > maxH2) maxH2 = v; }
-        heightMapRef.current.hm = new Float32Array(orig);
-        heightMapRef.current.minH = minH2;
-        heightMapRef.current.maxH = maxH2;
-        const ctx = canvasRef.current.getContext('2d');
-        const img3 = ctx.createImageData(width, height);
-        for (let i = 0; i < width * height; i++) {
-          const norm = Math.floor(((orig[i] - minH2) / (maxH2 - minH2 || 1)) * 255);
-          img3.data[4 * i] = norm;
-          img3.data[4 * i + 1] = norm;
-          img3.data[4 * i + 2] = norm;
-          img3.data[4 * i + 3] = 255;
-        }
-        ctx.putImageData(img3, 0, 0);
-        setErosionRunning(false);
-        setErosionProgress(undefined);
-      });
-    }
+    setMinMaxHeight({ minH: 0, maxH: 1 });
+    // setActiveView('2D'); // Optionally reset view
+  }, [setCurrentParams, initialAppSettings]);
+
+  const onHeightmapGeneratedFrom2D = useCallback((newData, width, height, minH, maxH) => {
+    setHeightmapData(newData);
+    setMapDimensions({ width, height });
+    setMinMaxHeight({ minH, maxH });
+    setIsHeightmapEverGenerated(true);
   }, []);
 
-  // 2D/3D view toggle and zoom/pan setup
-  const [show3DView, setShow3DView] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const panStartRef = useRef({ x: 0, y: 0 });
-  const isPanningRef = useRef(false);
-  const handleWheel = useCallback(e => { e.preventDefault(); const delta = -e.deltaY / 500; setZoom(z => Math.min(Math.max(z * (1 + delta), 0.1), 10)); }, []);
-  const handleMouseDown = useCallback(e => { isPanningRef.current = true; panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }; }, [pan]);
-  const handleMouseMove = useCallback(e => { if (isPanningRef.current) { setPan({ x: e.clientX - panStartRef.current.x, y: e.clientY - panStartRef.current.y }); } }, []);
-  const handleMouseUp = useCallback(() => { isPanningRef.current = false; }, []);
-  // 3D view on-demand data
-  const [threeData, setThreeData] = useState(null);
-  const handleGenerate3D = useCallback(() => {
-    const terrainWorker = new TerrainWorkerService();
-    terrainWorkerRef.current = terrainWorker;
-    setTerrainRunning(true);
-    setTerrainProgress(0);
-    terrainWorker.generate(params, p => setTerrainProgress(p), heightMapRef.current.hm).then(data => {
-      const { geometryData, scatterData } = data;
-      // Reconstruct geometry
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(geometryData.positions), 3));
-      geom.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(geometryData.normals), 3));
-      if (geometryData.uvs.length) geom.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geometryData.uvs), 2));
-      if (geometryData.indices.length) geom.setIndex(new THREE.BufferAttribute(new Uint32Array(geometryData.indices), 1));
-      // Create threeData
-      // Water plane recreated on main thread
-      const waterPlane = params.enableWater
-        ? createWaterPlane( Math.max(params.size, params.size), { waterLevel: params.waterLevel, waterColor: '#00ffff', useLOD: false })
-        : null;
-      setThreeData({ geometry: geom, material: null, water: waterPlane, scatterData });
-      // Create material on main thread
-      createTexturedTerrainMaterial({
-        heightScale: params.heightScale, rockHeight: params.rockHeight,
-        moistureScale: params.moistureScale, moistureNoiseScale: params.moistureNoiseScale,
-        terrainBlendSharpness: params.terrainBlendSharpness, textureResolution: params.textureResolution,
-        gravelIntensity: params.gravelIntensity, gravelScale: params.gravelScale,
-        sedimentCurvatureIntensity: params.sedimentCurvatureIntensity,
-        albedoMapUrl: params.albedoMapUrl, normalMapUrl: params.normalMapUrl,
-        roughnessMapUrl: params.roughnessMapUrl, displacementMapUrl: params.displacementMapUrl,
-        textureScale: params.textureScale, normalMapStrength: params.normalMapStrength,
-        displacementScale: params.displacementScale, roughnessMultiplier: params.roughnessMultiplier,
-        albedoIntensity: params.albedoIntensity
-      }).then(mat => {
-        setThreeData(td => ({ ...td, material: mat }));
-        setTerrainRunning(false);
-        setTerrainProgress(undefined);
-        setShow3DView(true);
-      });
-    });
-  }, [params]);
+  const handleBusyStateChange = useCallback((isBusy) => {
+    setIsAppBusy(isBusy);
+  }, []);
 
+  // Effect to update mapDimensions if meshResolution changes in currentParams
+  // before a heightmap is generated for the first time or after a reset.
   useEffect(() => {
-    const paramStr = JSON.stringify(params);
-    if (show3DView && threeData && paramStr !== lastParamsStr.current) {
-      setNeedsRefresh(true);
+    if (!isHeightmapEverGenerated || !heightmapData) {
+      setMapDimensions({
+        width: currentParams.meshResolution || initialAppSettings.meshResolution || 512,
+        height: currentParams.meshResolution || initialAppSettings.meshResolution || 512,
+      });
     }
-    lastParamsStr.current = paramStr;
-  }, [params, show3DView, threeData]);
+  }, [currentParams.meshResolution, isHeightmapEverGenerated, heightmapData, initialAppSettings.meshResolution]);
 
-  // Combined worker activity
-  const anyWorkerRunning = erosionRunning || terrainRunning;
-  const combinedProgress = anyWorkerRunning ? (
-    ((erosionRunning ? (erosionProgress || 0) : 0) + (terrainRunning ? (terrainProgress || 0) : 0)) /
-    ((erosionRunning ? 1 : 0) + (terrainRunning ? 1 : 0))
-  ) : 0;
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#1e1e1e' }}>
       <SettingsPanel 
-        params={{
-          ...params,
-          erosionRunning,
-          erosionProgress,
-          terrainRunning,
-          terrainProgress,
-          onStartErosion: !erosionRunning ? handleStartErosion : undefined,
-          onStopErosion: erosionRunning ? handleStopErosion : undefined,
-          onResetErosion: handleResetErosion
+        params={currentParams}
+        onParamChange={(key, value) => {
+          const keys = key.split('.');
+          if (keys.length > 1) {
+            setCurrentParams(prev => {
+              const newState = { ...prev };
+              let currentLevel = newState;
+              keys.forEach((k, index) => {
+                if (index === keys.length - 1) {
+                  currentLevel[k] = value;
+                } else {
+                  // Ensure nested objects exist before assigning to them
+                  currentLevel[k] = { ...(currentLevel[k] || {}) };
+                  currentLevel = currentLevel[k];
+                }
+              });
+              return newState;
+            });
+          } else {
+            setCurrentParams(prev => ({ ...prev, [key]: value }));
+          }
         }}
-        onParamChange={(key, value) => setParams(prev => ({ ...prev, [key]: value }))}
-        onReset={() => setParams(defaultParams)}
+        onReset={handleResetParams}
       />
-      <div style={{ flex: 1, padding: '20px', backgroundColor: '#222' }}>
-        {/* Web worker loading bar */}
+      <div style={{ flex: 1, padding: '20px', backgroundColor: '#222', display: 'flex', flexDirection: 'column' }}>
         <div style={{ height: '6px', background: '#333', marginBottom: '10px' }}>
-          {anyWorkerRunning && (
-            <div style={{ width: `${combinedProgress * 100}%`, height: '100%', background: '#6ec1e4', transition: 'width 0.2s' }} />
+          {isAppBusy && (
+            <div style={{ width: `100%`, height: '100%', background: '#6ec1e4', animation: 'pulse 1.5s infinite ease-in-out' }} />
           )}
         </div>
-        {/* View controls */}
+
         <div style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
-          {!show3DView && (
-            <button 
-              onClick={handleGenerateHeightmap}
-              style={{ 
-                padding: '10px 20px',
+          <button
+            onClick={() => setActiveView(prev => prev === '2D' ? '3D' : '2D')}
+            disabled={activeView === '2D' && !isHeightmapEverGenerated && !heightmapData}
+            style={{
+              padding: '10px 20px',
+              background: '#6ec1e4',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'white',
+              fontWeight: '600',
+              cursor: 'pointer',
+              opacity: (activeView === '2D' && !isHeightmapEverGenerated && !heightmapData) ? 0.5 : 1,
+            }}
+          >
+            {activeView === '2D' ? 'Switch to 3D View' : 'Switch to 2D View'}
+          </button>
+        </div>
+
+        <div style={{ flex: 1, width: '100%', overflow: 'hidden', position: 'relative', border: '1px solid #444' }}>
+          {activeView === '2D' ? (
+            <TwoDViewport
+              currentParams={currentParams}
+              heightmapGenerationService={heightmapGenerationService}
+              erosionService={erosionService}
+              heightmapDisplayService={heightmapDisplayService}
+              onHeightmapGenerated={onHeightmapGeneratedFrom2D}
+              initialHeightmapData={{
+                data: heightmapData,
+                width: mapDimensions.width,
+                height: mapDimensions.height,
+                minHeight: minMaxHeight.minH,
+                maxHeight: minMaxHeight.maxH,
+              }}
+              onBusyStateChange={handleBusyStateChange}
+            />
+          ) : (
+            heightmapData && isHeightmapEverGenerated ? (
+              <ThreeDViewport
+                currentParams={currentParams}
+                heightmapData={heightmapData}
+                mapWidth={mapDimensions.width}
+                mapHeight={mapDimensions.height}
+                minGeneratedHeight={minMaxHeight.minH}
+                maxGeneratedHeight={minMaxHeight.maxH}
+                services={{ terrainMaterialService, scatterService }}
+                onBusyStateChange={handleBusyStateChange}
+              />
+            ) : (
+              <div style={{color: 'white', textAlign: 'center', paddingTop: '50px'}}>
+                Please generate a heightmap in the 2D view first.
+              </div>
+            )
+          )}
+        </div>
+      </div>
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 0.6; }
+          50% { opacity: 1; }
+          100% { opacity: 0.6; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default App;
                 background: '#6ec1e4',
                 border: 'none',
                 borderRadius: '8px',
