@@ -22,12 +22,12 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset, defaultScatt
     'Scatter Layers': <FaLayerGroup style={{ marginRight: 8, color: '#e4b06e' }} />
   };
 
-  // Memoize options arrays
-  const erosionTypeOptions = React.useMemo(() => [
-    { value: 'thermal', label: 'Thermal' },
-    { value: 'hydraulic', label: 'Hydraulic' },
-    { value: 'both', label: 'Both' }
-  ], []);
+  // Memoize options arrays - erosionTypeOptions was unused.
+  // const erosionTypeOptions = React.useMemo(() => [
+  //   { value: 'thermal', label: 'Thermal' },
+  //   { value: 'hydraulic', label: 'Hydraulic' },
+  //   { value: 'both', label: 'Both' }
+  // ], []);
 
   const CollapsibleSection = ({ title, children, defaultOpen = true }) => {
     const [open, setOpen] = React.useState(defaultOpen);
@@ -154,7 +154,7 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset, defaultScatt
           <ParameterControl label="Seed" type="number" min="0" max="999999" step="1" value={params.seed} onChange={v => handleParamChange('seed', +v)} />
         </CollapsibleSection>
         <CollapsibleSection title="Ridged Noise" defaultOpen={false}>
-          {/* Assuming 'ridged' is a root param if it's not in HeightmapDefaultParams from the service */}
+          {/* 'ridged' is a root param from App.js initialAppSettings (not from HeightmapDefaultParams directly) */}
           <ParameterControl label="Enable Ridged Noise" type="checkbox" value={params.ridged || false} onChange={v => handleParamChange('ridged', v)} />
           <ParameterControl label="Ridged Offset" type="range" min="0" max="1" step="0.1" value={params.ridgedOffset} onChange={v => handleParamChange('ridgedOffset', +v)} />
         </CollapsibleSection>
@@ -165,37 +165,31 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset, defaultScatt
             min="8"
             max="1024"
             step="8"
-            value={params.worleyPoints || 256} // From GenDefaults
+            value={params.worleyPoints || 256}
             onChange={v => handleParamChange('worleyPoints', +v)} 
             description="Number of points for Worley noise generation." 
           />
-          {/* Assuming worleySeed, worleyWeight, worleyDimension are root params if custom */}
           <ParameterControl 
             label="Seed" 
             type="number" 
             min="0" 
             max="999999" 
             step="1" 
-            value={params.worleySeed || 0} // From GenDefaults (was missing, added to App.js initialAppSettings)
+            value={params.worleySeed || 0}
             onChange={v => handleParamChange('worleySeed', +v)} 
             description="Seed for Worley noise randomization." 
           />
-          {/* <ParameterControl label="Weight" type="range" min="0" max="1" step="0.1" value={params.worleyWeight || 0.5} onChange={v => handleParamChange('worleyWeight', +v)} /> */}
-          {/* <ParameterControl label="Dimension" type="range" min="1" max="3" step="1" value={params.worleyDimension || 2} onChange={v => handleParamChange('worleyDimension', +v)} /> */}
+          {/* Parameters like worleyWeight, worleyDimension, useDomainWarp, warpType, warpIterations, applySmoothing, etc.
+              were not part of the service-based HeightmapDefaultParams and were not explicitly added back to App.js's
+              getAggregatedDefaultParams root. If they are still intended to be used, they need to be added to
+              App.js's parameter structure and initialized there. For now, their controls are removed. */}
         </CollapsibleSection>
         <CollapsibleSection title="Domain Warping" defaultOpen={false}>
-          {/* Assuming useDomainWarp & warpType are root params if custom */}
-          {/* <ParameterControl label="Use Domain Warp" type="checkbox" value={params.useDomainWarp || false} onChange={v => handleParamChange('useDomainWarp', v)} /> */}
-          {/* <ParameterControl label="Warp Type" type="select" value={params.warpType || 'fractal'} onChange={v => handleParamChange('warpType', v)} options={[ { value: 'fractal', label: 'Fractal' }, { value: 'simplex', label: 'Simplex' } ]} /> */}
           <ParameterControl label="Domain Warp Strength" type="range" min="0" max="1" step="0.05" value={params.domainWarpStrength} onChange={v => handleParamChange('domainWarpStrength', +v)} />
           <ParameterControl label="Domain Warp Frequency" type="range" min="0.01" max="0.5" step="0.01" value={params.domainWarpFreq} onChange={v => handleParamChange('domainWarpFreq', +v)} />
-          {/* <ParameterControl label="Warp Iterations" type="range" min="1" max="5" step="1" value={params.warpIterations || 3} onChange={v => handleParamChange('warpIterations', +v)} /> */}
         </CollapsibleSection>
         <CollapsibleSection title="Smoothing" defaultOpen={false}>
-          {/* Assuming applySmoothing, smoothIterations, smoothFactor are root params if custom */}
-          {/* <ParameterControl label="Enable Smoothing" type="checkbox" value={params.applySmoothing || false} onChange={v => handleParamChange('applySmoothing', v)} /> */}
-          {/* <ParameterControl label="Smoothing Passes" type="range" min="0" max="10" step="1" value={params.smoothIterations || 1} onChange={v => handleParamChange('smoothIterations', +v)} /> */}
-          {/* <ParameterControl label="Smoothing Strength" type="range" min="0" max="1" step="0.05" value={params.smoothFactor || 0.5} onChange={v => handleParamChange('smoothFactor', +v)} /> */}
+          {/* Smoothing parameters are not currently in App.js currentParams based on service defaults. */}
         </CollapsibleSection>
         <CollapsibleSection title="Surface & Texture">
           <ParameterControl label="Height Scale" type="range" min={0.1} max={5.0} step={0.1} value={params.material?.heightScale} onChange={v => handleParamChange('material.heightScale', +v)} description="Controls the exaggeration of height in the procedural texture." />
@@ -216,8 +210,7 @@ const SettingsPanel = React.memo(({ params, onParamChange, onReset, defaultScatt
           <ParameterControl label="Enable Water" type="checkbox" value={params.water?.enableWater || false} onChange={v => handleParamChange('water.enableWater', v)} description="Add a water plane." />
           <ParameterControl label="Water Level" type="range" min={0} max={1} step={0.01} value={params.water?.waterLevel || 0} onChange={v => handleParamChange('water.waterLevel', +v)} description="Height of the water plane (relative to base, affected by Height Scale)." />
           <ParameterControl label="Water Opacity" type="range" min={0} max={1} step={0.01} value={params.water?.waterOpacity || 0.4} onChange={v => handleParamChange('water.waterOpacity', +v)} />
-          {/* Water color could be a color picker component if available, or simple text input for hex */}
-          {/* <ParameterControl label="Water Color" type="text" value={params.water?.waterColor.getHexString() || '#0077be'} onChange={v => handleParamChange('water.waterColor', v)} /> */}
+          {/* Water color control removed as it was complex and not a simple param type. App.js defaults it. */}
         </CollapsibleSection>
         <CollapsibleSection title="Scatter Layers">
           {(() => {

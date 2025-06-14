@@ -23,6 +23,29 @@ function _validateScatterParams(params, required) {
 
 // --- Worker-Compatible Pure Functions ---
 
+export const DefaultScatterLayerParams = { // Based on ScatterService constructor's defaultLayerParams
+  name: "DefaultScatterLayer",
+  enabled: true,
+  objectType: "tree_1",
+  density: 0.2,
+  pointRadius: 5,
+  maxSlopeDeg: 30,
+  maskThreshold: 0.6,
+  scatterOn: "all",
+  seed: 0, // Will be replaced by Date.now() or specific seed in constructor/usage
+  kAttempts: 30,
+  // terrainWidth, terrainHeight, heightmapResolution are usually context-dependent, not part of layer preset
+};
+
+export const DefaultGlobalScatterParams = {
+  // Example global scatter param:
+  // maxTotalScatterObjects: 10000,
+  // (Currently no global params are explicitly used by the scatter generation logic itself,
+  // but this provides a structure if needed in the future for App.js)
+  enabled: true, // A master switch for all scattering perhaps
+};
+
+
 export const generateScatterMaskInternal = (heightmap, width, height, config, terrainTypesEnum) => {
   // config should contain: maskThreshold, scatterOn
   // terrainTypesEnum is the TERRAIN_TYPES object
@@ -63,8 +86,6 @@ export const generateScatterMaskInternal = (heightmap, width, height, config, te
   }
   return mask;
 };
-
-// generatePoissonScatterPointsInternal and generateScatterLayerPointsInternal will be added next.
 
 export const generatePoissonScatterPointsInternal = (
   mask, mapWidth, mapHeight, heightmap,
@@ -237,22 +258,16 @@ export const generateScatterLayerPointsInternal = (
 
 class ScatterService {
   constructor() {
-    this.defaultLayerParams = {
-      name: "DefaultScatter",
-      enabled: true,
-      objectType: "tree_1",
-      density: 0.2,
-      pointRadius: 5, // grid units
-      maxSlopeDeg: 30,
-      maskThreshold: 0.6, // world units, or normalized 0-1 if heightmap is normalized
-      scatterOn: "all", // 'all', 'mountain', 'valley', 'plain'
-      seed: Date.now(),
-      kAttempts: 30, // Poisson disk sampling attempts
+    // Instance uses a deep copy of the exported default for its own base defaultLayerParams
+    this.defaultLayerParams = JSON.parse(JSON.stringify(DefaultScatterLayerParams));
+    // Overwrite seed with a dynamic one for the instance if needed, or let users set it.
+    this.defaultLayerParams.seed = Date.now();
 
-      terrainWidth: 1000, // world units
-      terrainHeight: 1000, // world units (depth for XZ plane if Y is up)
-      heightmapResolution: 512, // grid cells
-    };
+    // These might also be needed if they vary per instance or are configurable globally for the service
+    this.defaultLayerParams.terrainWidth = 1000;
+    this.defaultLayerParams.terrainHeight = 1000;
+    this.defaultLayerParams.heightmapResolution = 512;
+
 
     this.TERRAIN_TYPES = {
       ALL: 'all',
@@ -375,106 +390,3 @@ class ScatterService {
 }
 
 export default ScatterService;
-
-// --- Old code below this line will be integrated or removed ---
-
-// Constants for terrain types (now in class)
-/*
-const TERRAIN_TYPES = {
-  ALL: 'all',
-  MOUNTAIN: 'mountain',
-  VALLEY: 'valley',
-  PLAIN: 'plain',
-};
-*/
-
-// Default parameters (now in class as defaultLayerParams)
-/*
-const DEFAULT_MASK_THRESHOLD = 0.5;
-const DEFAULT_SCATTER_ON = TERRAIN_TYPES.ALL; // Error: TERRAIN_TYPES would be undefined here now
-const DEFAULT_DENSITY = 0.2;
-const DEFAULT_SEED = 42;
-const DEFAULT_POINT_RADIUS = 2;
-const DEFAULT_MAX_SLOPE_DEG = 45;
-const DEFAULT_TERRAIN_WIDTH = 10;
-const DEFAULT_TERRAIN_HEIGHT = 10;
-*/
-
-/**
- * Validates required parameters and throws if invalid. (now _validateScatterParams)
- * @param {object} params - Parameters to validate.
- * @param {Array<string>} required - Required parameter names.
- */
-/*
-function validateParams(params, required) {
-  for (const key of required) {
-    if (params[key] === undefined || params[key] === null) {
-      throw new Error(`Missing required parameter: ${key}`);
-    }
-  }
-}
-*/
-
-/**
- * Generates a scatter mask based on the heightmap and parameters.
- * @param {Float32Array} heightmap - The heightmap data (flattened array).
- * @param {number} width - Width of the heightmap.
- * @param {number} height - Height of the heightmap.
- * @param {object} params - Scatter parameters.
- * @param {number} [params.maskThreshold=0.5] - Height threshold for mask (0-1).
- * @param {string} [params.scatterOn='all'] - Terrain type to scatter on ('all', 'mountain', 'valley', 'plain').
- * @returns {Uint8Array} - Binary mask (1 = scatter, 0 = no scatter).
- */
-// To be integrated into ScatterService class
-// export function generateScatterMask(heightmap, width, height, params = {}) { ... } // Now part of the class
-
-
-/**
- * GLSL snippet for scatter mask generation (for use in shaders)
- * @returns {string}
- */
-// Now available as ScatterService.getScatterMaskGLSL()
-// export function scatterMaskGLSL() { ... } // Commented out
-
-/**
- * Generates scatter points using Bridson's Poisson Disk Sampling (true blue noise) within the mask.
- * Uses a spatial grid for efficient minimum distance checks.
- * Respects mask, density, and slope constraints.
- * @param {Uint8Array} mask - Binary mask (1 = scatter, 0 = no scatter).
- * @param {number} width - Width of the mask.
- * @param {number} height - Height of the mask.
- * @param {object} params - Scatter parameters.
- * @param {number} [params.density=0.2] - Scatter density (0-1, controls number of attempts per cell).
- * @param {number} [params.seed=42] - Random seed.
- * @param {number} [params.pointRadius=2] - Minimum grid distance between points.
- * @param {number} [params.maxSlopeDeg=45] - Maximum slope angle allowed for points in degrees.
- * @param {Float32Array} [params.heightmap] - Heightmap data.
- * @param {number} [params.terrainWidth=10] - Width of the terrain.
- * @param {number} [params.terrainHeight=10] - Height of the terrain.
- * @param {number} [params.k=30] - Number of candidate attempts per active point (default 30).
- * @returns {Array<{x: number, y: number}>} - Array of scatter points (in grid coordinates).
- */
-// To be integrated into ScatterService class
-// export function generatePoissonScatterPoints(mask, width, height, params = {}) { ... } // Now part of the class
-
-/**
- * Simple seeded RNG (Mulberry32) - Now defined as _mulberry32 at the top
- * @param {number} a - Seed
- * @returns {function(): number} - RNG function returning [0,1)
- */
-/*
-function mulberry32(a) {
-  return () => {
-    let t = a += 0x6D2B79F5;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-*/
-
-/**
- * Example usage:
- * const service = new ScatterService();
- * // ... then use service methods once they are fully integrated
- */ 

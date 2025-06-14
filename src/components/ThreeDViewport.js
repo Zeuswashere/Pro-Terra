@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // Removed useRef
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stats, useProgress, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -133,7 +133,6 @@ const ThreeDViewport = ({
       const { type, payload, phase, value } = event.data;
 
       if (type === 'progress') {
-        // console.log(`Worker progress: ${phase} - ${(value * 100).toFixed(0)}%`);
         // Optionally, update a more detailed progress state here
       } else if (type === 'done') {
         console.log("ThreeDViewport: Worker finished processing.", payload);
@@ -303,6 +302,8 @@ const ThreeDViewport = ({
     </div>
   );
 };
+
+import PropTypes from 'prop-types';
 
 // PropTypes (example, expand as needed)
 ThreeDViewport.propTypes = {

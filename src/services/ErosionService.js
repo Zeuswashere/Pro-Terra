@@ -1,145 +1,214 @@
-// import ErosionWorkerService from './ErosionWorkerService'; // Assuming this will be the path
+import ErosionWorkerService from './ErosionWorkerService.js'; // Assuming path
+
+export const DefaultErosionParams = {
+  erosionDroplets: 30000,
+  erosionBatchSize: 1000, // Default batch size for the step method
+  inertia: 0.1,
+  friction: 0.1,
+  sedimentCapacityFactor: 1.0,
+  depositionRate: 0.1,
+  evaporationRate: 0.01,
+  minVolume: 0.01,
+  initialVolume: 1.0,
+  initialSpeed: 1.0,
+  maxDropletLifetime: 100,
+  // numWorkers is not part of this config, worker service might handle it
+};
 
 class ErosionService {
   constructor() {
-    this.defaultParams = {
-      erosionDroplets: 30000,
-      erosionBatchSize: 1000,
-      inertia: 0.1,
-      friction: 0.1,
-      sedimentCapacityFactor: 1.0,
-      depositionRate: 0.1,
-      evaporationRate: 0.01,
-      minVolume: 0.01,
-      initialVolume: 1.0,
-      initialSpeed: 1.0,
-      maxDropletLifetime: 100,
-      // Parameters for worker communication or internal state
-      numWorkers: 4, // Example: default number of workers
-    };
+    this.defaultParams = { ...DefaultErosionParams }; // Initialize from exported const
 
-    this.heightmapData = null;
-    this.originalHeightmap = null;
+    this.heightmapData = null;      // Float32Array, current working copy
+    this.originalHeightmap = null;  // Float32Array, initial state for reset
     this.width = 0;
     this.height = 0;
-    this.params = { ...this.defaultParams };
+    this.currentInternalParams = { ...this.defaultParams }; // Holds merged params from init
 
     this._isRunning = false;
-    this._progress = 0; // 0 to 1
+    this._progress = 0; // 0 to 1, represents fraction of total droplets processed
 
-    this.progressSubscribers = [];
-    this.completeSubscribers = [];
+    this.progressCallback = null;
+    this.completeCallback = null;
 
-    // this.workerService = new ErosionWorkerService(); // Or some initialization logic
-    // For now, worker interaction methods will be stubs.
+    if (typeof window !== 'undefined') { // Ensure worker is only created in browser context
+        this.workerService = new ErosionWorkerService();
+        this.workerService.onmessage = this.handleWorkerMessage.bind(this);
+    } else {
+        this.workerService = null;
+        console.warn("ErosionService: Worker cannot be initialized outside of a browser environment.");
+    }
   }
 
   initialize(heightmap, width, height, params = {}) {
-    this.originalHeightmap = new Float32Array(heightmap); // Store a copy
-    this.heightmapData = new Float32Array(heightmap); // Current working copy
+    if (!this.workerService) {
+        console.error("ErosionService: Worker not initialized. Cannot proceed.");
+        return;
+    }
+    this.originalHeightmap = new Float32Array(heightmap);
+    this.heightmapData = new Float32Array(heightmap);
     this.width = width;
     this.height = height;
-    this.params = { ...this.defaultParams, ...params };
-    this._progress = 0;
-    this._isRunning = false;
+    // Merge provided params with defaults, then with any existing internal params
+    this.currentInternalParams = { ...this.defaultParams, ...this.currentInternalParams, ...params };
 
-    console.log('ErosionService initialized with dimensions:', width, 'x', height);
-    // TODO: Initialize worker service with heightmap and params
-    // this.workerService.initialize(this.heightmapData, this.width, this.height, this.params);
+    this._progress = 0;
+    this._isRunning = false; // Set to false initially, start() or step() will set it true
+
+    console.log('ErosionService: Initializing worker with dimensions:', width, 'x', height);
+
+    // Prepare payload for worker initialization
+    // The worker expects the heightmap buffer to be transferred.
+    const initPayload = {
+        width: this.width,
+        height: this.height,
+        heightmap: this.heightmapData.buffer.slice(0), // Send a copy of the buffer
+        params: this.currentInternalParams, // Send merged erosion-specific params
+        numDroplets: this.currentInternalParams.erosionDroplets
+    };
+
+    this.workerService.postMessage(
+        { action: 'init', payload: initPayload },
+        [initPayload.heightmap] // Transfer the buffer
+    );
   }
 
   start() {
-    if (this._isRunning) {
-      console.log('Erosion already running.');
+    if (!this.heightmapData || !this.workerService) {
+      console.error('ErosionService not initialized or worker not available. Call initialize() first.');
       return;
     }
-    if (!this.heightmapData) {
-      console.error('ErosionService not initialized. Call initialize() first.');
+    if (this._isRunning) {
+      console.log('ErosionService: Erosion already running or set to run via steps.');
       return;
     }
     this._isRunning = true;
-    this._progress = 0;
-    console.log('Erosion started.');
-    // TODO: Start erosion process in worker
-    // this.workerService.startErosion();
-    // For now, simulate some progress for testing
-    this.simulateProgress();
+    // Note: Progress is not reset here, allowing 'start' to resume.
+    // If reset is desired, TwoDViewport should call reset() then start().
+    console.log('ErosionService: Set to run. Use step() to process droplets.');
+    // No direct message to worker, step() will trigger processing.
   }
 
   step(batchSize) {
-    if (!this._isRunning) {
-      // Allow stepping even if not "running" full simulation, e.g. for manual control
-      if (!this.heightmapData) {
-        console.error('ErosionService not initialized. Call initialize() first.');
-        return;
-      }
-       this._isRunning = true; // Mark as running if stepping manually
+    if (!this.heightmapData || !this.workerService) {
+      console.error('ErosionService not initialized or worker not available. Call initialize() first.');
+      return;
     }
-    const currentBatchSize = batchSize || this.params.erosionBatchSize;
-    console.log(`Erosion step with batch size: ${currentBatchSize}`);
-    // TODO: Tell worker to process a batch
-    // this.workerService.processBatch(currentBatchSize).then(erodedHeightmap => {
-    //   this.heightmapData.set(erodedHeightmap);
-    //   this._progress = this.workerService.getProgress(); // Assuming worker tracks overall progress
-    //   this.notifyProgress();
-    //   if (this._progress >= 1) {
-    //     this.handleCompletion();
-    //   }
-    // });
+    if (!this._isRunning) { // If paused, calling step will resume it.
+        this._isRunning = true;
+        console.log('ErosionService: Resuming via step().');
+    }
+
+    const currentBatchSize = batchSize || this.currentInternalParams.erosionBatchSize;
+    this.workerService.postMessage({
+        action: 'step',
+        payload: { iterations: currentBatchSize }
+    });
   }
 
   pause() {
     if (!this._isRunning) {
-      console.log('Erosion not running.');
       return;
     }
     this._isRunning = false;
-    console.log('Erosion paused.');
-    // TODO: Pause erosion process in worker
-    // this.workerService.pauseErosion();
+    console.log('ErosionService: Paused. Worker will complete current batch if any.');
+    // No explicit message to worker needed if it processes batches atomically.
   }
 
-  reset(originalHeightmap) {
-    const mapToReset = originalHeightmap || this.originalHeightmap;
-    if (!mapToReset) {
-      console.error('No original heightmap available to reset to.');
+  reset() {
+    if (!this.originalHeightmap || !this.workerService) {
+      console.error('ErosionService: No original heightmap to reset to or worker not available.');
       return;
     }
-    this.heightmapData = new Float32Array(mapToReset);
+
+    this.heightmapData = new Float32Array(this.originalHeightmap);
+    const prevProgress = this._progress;
+    const prevIsRunning = this._isRunning;
+
     this._progress = 0;
     this._isRunning = false;
-    console.log('Erosion reset to original heightmap.');
-    this.notifyProgress(); // Notify that progress is back to 0
-    // TODO: Reset worker state
-    // this.workerService.reset(this.heightmapData);
+
+    console.log('ErosionService: Resetting erosion state and notifying worker.');
+    this.workerService.postMessage({
+        action: 'reset',
+        payload: { heightmap: this.originalHeightmap.buffer.slice(0) } // Send copy of buffer
+    }, [this.originalHeightmap.buffer.slice(0)]); // Transfer buffer
+
+    // Notify UI of reset state if it had changed
+    if (this.progressCallback && (prevProgress !== 0 || prevIsRunning)) {
+      this.progressCallback(this._progress, new Float32Array(this.heightmapData));
+    }
+    // It could be argued that onComplete shouldn't be called on reset,
+    // but if the UI needs to know the final state is the reset one, it's useful.
+    // Or, a specific onReset callback could be introduced.
+    // For now, let's assume onComplete signifies a stable (non-eroding) state.
+    if (this.completeCallback && (prevProgress !== 0 || prevIsRunning)) {
+      this.completeCallback(new Float32Array(this.heightmapData));
+    }
   }
 
   onProgress(callback) {
     if (typeof callback === 'function') {
-      this.progressSubscribers.push(callback);
+      this.progressCallback = callback;
     }
   }
 
   onComplete(callback) {
     if (typeof callback === 'function') {
-      this.completeSubscribers.push(callback);
+      this.completeCallback = callback;
     }
   }
 
-  notifyProgress() {
-    this.progressSubscribers.forEach(cb => cb(this._progress, this.heightmapData));
+  handleWorkerMessage(event) {
+    const { type, payload } = event.data;
+
+    switch (type) {
+      case 'initDone':
+        console.log('ErosionService: Worker initialized.');
+        // Optionally trigger any post-init actions or callbacks
+        break;
+      case 'progressUpdate':
+        if (payload.heightMap && this.heightmapData) {
+          // Worker sends back the full updated heightmap buffer
+          const newHeightmap = new Float32Array(payload.heightMap);
+          this.heightmapData.set(newHeightmap);
+        }
+        this._progress = payload.progress;
+        if (this.progressCallback) {
+          // Provide a copy to the callback to prevent accidental mutation of internal state
+          this.progressCallback(this._progress, new Float32Array(this.heightmapData));
+        }
+        break;
+      case 'erosionComplete':
+        if (payload.heightMap && this.heightmapData) {
+          const finalHeightmap = new Float32Array(payload.heightMap);
+          this.heightmapData.set(finalHeightmap);
+        }
+        this._isRunning = false;
+        this._progress = 1;
+        console.log('ErosionService: Erosion completed by worker.');
+        if (this.progressCallback) { // Final progress update
+            this.progressCallback(this._progress, new Float32Array(this.heightmapData));
+        }
+        if (this.completeCallback) {
+          this.completeCallback(new Float32Array(this.heightmapData));
+        }
+        break;
+      case 'error':
+        console.error('ErosionService: Error from worker:', payload.message);
+        this._isRunning = false; // Stop on error
+        // Optionally, notify via a specific error callback
+        break;
+      default:
+        console.warn('ErosionService: Unknown message type from worker:', type);
+    }
   }
 
-  notifyComplete() {
-    this.completeSubscribers.forEach(cb => cb(this.heightmapData));
-  }
-
-  handleCompletion() {
-    this._isRunning = false;
-    this._progress = 1;
-    this.notifyProgress(); // Final progress update
-    this.notifyComplete();
-    console.log('Erosion completed.');
+  terminate() {
+    if (this.workerService) {
+      this.workerService.terminate();
+      console.log("ErosionService: Worker terminated.");
+    }
   }
 
   isRunning() {
@@ -151,40 +220,8 @@ class ErosionService {
   }
 
   getHeightmap() {
-    return this.heightmapData;
-  }
-
-  // --- Helper for simulation without actual worker ---
-  simulateProgress() {
-    if (!this._isRunning) return;
-
-    // Simulate work being done in batches
-    const totalDroplets = this.params.erosionDroplets;
-    let processedDroplets = Math.floor(this._progress * totalDroplets);
-
-    const intervalId = setInterval(() => {
-      if (!this._isRunning) {
-        clearInterval(intervalId);
-        return;
-      }
-
-      processedDroplets += this.params.erosionBatchSize;
-      this._progress = Math.min(1, processedDroplets / totalDroplets);
-
-      // Simulate heightmap modification (e.g., slightly lower everything)
-      if (this.heightmapData) {
-        for(let i=0; i < this.heightmapData.length; i++) {
-            // this.heightmapData[i] *= (1 - (0.001 * (this.params.erosionBatchSize / totalDroplets)));
-        }
-      }
-
-      this.notifyProgress();
-
-      if (this._progress >= 1) {
-        clearInterval(intervalId);
-        this.handleCompletion();
-      }
-    }, 100); // Simulate batch processing time
+    // Return a copy to prevent external modification of internal state
+    return this.heightmapData ? new Float32Array(this.heightmapData) : null;
   }
 }
 

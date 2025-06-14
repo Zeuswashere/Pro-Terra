@@ -53,7 +53,7 @@ export const applySmoothingInternal = (vertexPositions, mapWidth, mapHeight, smo
     {x: -1, y: 0, weight: 1}, {x: 1, y: 0, weight: 1},
     {x: -1, y: 1, weight: 0.5}, {x: 0, y: 1, weight: 1}, {x: 1, y: 1, weight: 0.5}
   ];
-  const kernelWeight = 6;
+  // const kernelWeight = 6; // This was unused after refactor of smoothing logic
 
   const iterations = smoothingParams.smoothIterations || defaultParams.smoothIterations;
   const factor = smoothingParams.smoothFactor || defaultParams.smoothFactor;

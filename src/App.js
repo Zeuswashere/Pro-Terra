@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react'; // Removed useRef
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 
 // SettingsPanel and PresetPanel are still used
 import SettingsPanel from './components/SettingsPanel';
@@ -12,111 +12,103 @@ import TwoDViewport from './components/TwoDViewport';
 import ThreeDViewport from './components/ThreeDViewport';
 
 // Import Services & their default parameter objects
-import HeightmapGenerationService, { HeightmapDefaultParams as GenDefaults } from './services/HeightmapGenerationService';
-import ErosionService from './services/ErosionService';
-import ScatterService from './services/ScatterService';
-import TerrainMaterialService, { DefaultTerrainMaterialParams, DefaultWaterParams } from './services/TerrainMaterialService'; // DefaultTextureURLs not directly used in App.js state
+import HeightmapGenerationService, { HeightmapDefaultParams } from './services/HeightmapGenerationService';
+import ErosionService, { DefaultErosionParams } from './services/ErosionService';
+import ScatterService, { DefaultGlobalScatterParams, DefaultScatterLayerParams } from './services/ScatterService';
+// DefaultTextureURLs from TerrainMaterialService is not directly used in App.js state aggregation
+import TerrainMaterialService, { DefaultTerrainMaterialParams, DefaultWaterParams } from './services/TerrainMaterialService';
 import HeightmapDisplayService from './services/HeightmapDisplayService';
 
+const getAggregatedDefaultParams = () => {
+  // HeightmapGenerationService exports HeightmapDefaultParams directly (already includes shape and noise)
+  const hgDefaults = HeightmapDefaultParams || {};
+  const erDefaults = DefaultErosionParams || {};
+  const globalScDefaults = DefaultGlobalScatterParams || {};
+  // For scatter.scatterLayers, initialize with an empty array or one default layer.
+  // The actual DefaultScatterLayerParams is for when a user *adds* a new layer.
+  const scDefaults = {
+    ...globalScDefaults, // any global scatter settings
+    scatterLayers: [], // Default to no layers; SettingsPanel will use DefaultScatterLayerParams to add one
+  };
+  const tmDefaults = DefaultTerrainMaterialParams || {};
+  const twDefaults = DefaultWaterParams || {};
+
+  // This structure should align with what SettingsPanel and Viewports expect.
+  // Using a flatter structure for generation params as per previous App.js setup.
+  return {
+    // Root/Generation params (from HeightmapDefaultParams)
+    size: hgDefaults.size !== undefined ? hgDefaults.size : 1000,
+    meshResolution: hgDefaults.meshResolution !== undefined ? hgDefaults.meshResolution : 512,
+    seed: hgDefaults.seed !== undefined ? hgDefaults.seed : Date.now(),
+    frequency: hgDefaults.frequency, // Assuming these are all in hgDefaults
+    amplitude: hgDefaults.amplitude,
+    octaves: hgDefaults.octaves,
+    lacunarity: hgDefaults.lacunarity,
+    gain: hgDefaults.gain,
+    ridgedOffset: hgDefaults.ridgedOffset,
+    worleyPoints: hgDefaults.worleyPoints,
+    // Note: HeightmapDefaultParams might need to be expanded if it doesn't have all these (e.g. domainWarp)
+    // For now, assuming they are part of hgDefaults or will be undefined (and thus use component-level defaults if any)
+    domainWarpStrength: hgDefaults.domainWarpStrength,
+    domainWarpFreq: hgDefaults.domainWarpFreq,
+
+    // Nested params for other services/concerns
+    material: { ...tmDefaults },
+    water: { ...twDefaults },
+    erosion: { ...erDefaults },
+    scatter: { ...scDefaults }, // Contains global scatter settings and initial empty scatterLayers array
+
+    debug: { // Default debug settings
+      showGrid: false,
+      showAxes: false,
+    },
+    lighting: { // Default lighting settings
+      ambientIntensity: 0.5,
+      sunIntensity: 1.0,
+      sunPosition: [100, 100, 50],
+    }
+  };
+};
 
 function App() {
-  // Instantiate Services
+  // Instantiate Services (no changes here from previous step)
   const heightmapGenerationService = useMemo(() => new HeightmapGenerationService(), []);
-  const erosionService = useMemo(() => new ErosionService(), []); // Has defaultParams instance property
-  const scatterService = useMemo(() => new ScatterService(), []); // Has defaultLayerParams instance property
-  const terrainMaterialService = useMemo(() => new TerrainMaterialService(), []); // Methods are direct exports, no defaults needed from instance
-  const heightmapDisplayService = useMemo(() => new HeightmapDisplayService(), []); // Pure functions, no defaults
+  const erosionService = useMemo(() => new ErosionService(), []);
+  const scatterService = useMemo(() => new ScatterService(), []);
+  const terrainMaterialService = useMemo(() => new TerrainMaterialService(), []);
+  const heightmapDisplayService = useMemo(() => new HeightmapDisplayService(), []);
 
-  // Construct initialAppSettings by merging defaults from services
-  const initialAppSettings = useMemo(() => {
-    const hgDefaults = GenDefaults || {}; // HeightmapGenerationService.HeightmapDefaultParams
-    const erDefaults = erosionService.defaultParams || {}; // ErosionService defaults
-
-    // For ScatterService, defaultLayerParams is for one layer.
-    // App.js currentParams might store an array of layers.
-    // For top-level general scatter settings, we can pick some, or SettingsPanel will manage layers.
-    // Let's include a general 'scatter' section.
-    const scDefaults = {
-        density: scatterService.defaultLayerParams.density,
-        pointRadius: scatterService.defaultLayerParams.pointRadius,
-        maxSlopeDeg: scatterService.defaultLayerParams.maxSlopeDeg,
-        // scatterLayers will be an array managed by SettingsPanel, initialized empty or with one default layer.
-        scatterLayers: [JSON.parse(JSON.stringify(scatterService.defaultLayerParams))] // Deep copy one layer as example
-    };
-
-    const tmDefaults = DefaultTerrainMaterialParams || {}; // TerrainMaterialService defaults
-    const twDefaults = DefaultWaterParams || {}; // TerrainMaterialService water defaults
-
-    // Define a structure for currentParams based on these defaults
-    return {
-      // Heightmap Generation section (flat for now, or could be nested e.g., params.generation)
-      size: hgDefaults.size !== undefined ? hgDefaults.size : 1000, // world size
-      meshResolution: hgDefaults.meshResolution !== undefined ? hgDefaults.meshResolution : 512,
-      seed: hgDefaults.seed !== undefined ? hgDefaults.seed : Date.now(),
-      frequency: hgDefaults.frequency,
-      amplitude: hgDefaults.amplitude,
-      octaves: hgDefaults.octaves,
-      lacunarity: hgDefaults.lacunarity,
-      gain: hgDefaults.gain,
-      ridgedOffset: hgDefaults.ridgedOffset,
-      worleyPoints: hgDefaults.worleyPoints,
-      domainWarpStrength: hgDefaults.domainWarpStrength,
-      domainWarpFreq: hgDefaults.domainWarpFreq,
-      // ... other generation params from HeightmapDefaultParams
-
-      // Material section
-      material: { ...tmDefaults },
-
-      // Water section
-      water: { ...twDefaults },
-
-      // Erosion section (flat for now, or nested e.g., params.erosion)
-      erosion: { ...erDefaults },
-
-      // Scatter section
-      scatter: { ...scDefaults }, // Contains a default scatterLayers array with one layer
-
-      // Debug section (example)
-      debug: {
-        showGrid: false,
-        showAxes: false,
-      },
-
-      // Lighting (example, can be part of material or a separate section)
-      lighting: {
-        ambientIntensity: 0.5,
-        sunIntensity: 1.0,
-        sunPosition: [100, 100, 50], // Example
-      }
-    };
-  }, [heightmapGenerationService, erosionService, scatterService]); // Dependencies ensure it's stable unless services change (which they don't)
+  // initialAppSettings now uses the getAggregatedDefaultParams function
+  const initialAppSettings = useMemo(() => getAggregatedDefaultParams(), []);
+  // Note: Dependencies for useMemo on initialAppSettings can be empty if getAggregatedDefaultParams() is stable
+  // and doesn't rely on service instances themselves for default values (which it shouldn't for static defaults).
 
   // New State Management
-  const [currentParams, setCurrentParams] = usePersistentState('appParams_v3', initialAppSettings); // Initialize with merged defaults
-  const [activeView, setActiveView] = useState('2D'); // '2D' or '3D'
+  const [currentParams, setCurrentParams] = usePersistentState('appParams_v3', initialAppSettings);
+  const [activeView, setActiveView] = useState('2D');
 
-  const [heightmapData, setHeightmapData] = useState(null); // Float32Array
+  const [heightmapData, setHeightmapData] = useState(null);
   const [mapDimensions, setMapDimensions] = useState({
-    width: currentParams.meshResolution || initialAppSettings.meshResolution || 512,
-    height: currentParams.meshResolution || initialAppSettings.meshResolution || 512
+    width: currentParams.meshResolution || (initialAppSettings && initialAppSettings.meshResolution) || 512,
+    height: currentParams.meshResolution || (initialAppSettings && initialAppSettings.meshResolution) || 512
   });
-  const [minMaxHeight, setMinMaxHeight] = useState({ minH: 0, maxH: 1 }); // For scaling in 3D view
+  const [minMaxHeight, setMinMaxHeight] = useState({ minH: 0, maxH: 1 });
 
-  const [isAppBusy, setIsAppBusy] = useState(false); // General busy state for any major task
+  const [isAppBusy, setIsAppBusy] = useState(false);
   const [isHeightmapEverGenerated, setIsHeightmapEverGenerated] = useState(false);
 
   const handleResetParams = useCallback(() => {
-    setCurrentParams(initialAppSettings);
-    // Reset other app-level state related to generated data
+    const newDefaults = getAggregatedDefaultParams(); // Get fresh defaults
+    setCurrentParams(newDefaults);
     setHeightmapData(null);
     setIsHeightmapEverGenerated(false);
     setMapDimensions({
-      width: initialAppSettings.meshResolution || 512,
-      height: initialAppSettings.meshResolution || 512
+      width: newDefaults.meshResolution || 512,
+      height: newDefaults.meshResolution || 512
     });
     setMinMaxHeight({ minH: 0, maxH: 1 });
-    // setActiveView('2D'); // Optionally reset view
-  }, [setCurrentParams, initialAppSettings]);
+    setActiveView('2D');
+  }, [setCurrentParams]); // Removed initialAppSettings from deps, as getAggregatedDefaultParams is stable
 
   const onHeightmapGeneratedFrom2D = useCallback((newData, width, height, minH, maxH) => {
     setHeightmapData(newData);
@@ -145,6 +137,7 @@ function App() {
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#1e1e1e' }}>
       <SettingsPanel 
         params={currentParams}
+        defaultScatterLayerParams={DefaultScatterLayerParams} // Pass the default for new layers
         onParamChange={(key, value) => {
           const keys = key.split('.');
           if (keys.length > 1) {
@@ -182,7 +175,7 @@ function App() {
             style={{
               padding: '10px 20px',
               background: '#6ec1e4',
-              border: 'none',
+              border: 'none', // Added comma here
               borderRadius: '8px',
               color: 'white',
               fontWeight: '600',

@@ -1,11 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
-// Assume services are passed as props or context. For now, direct import for structure.
-// import HeightmapGenerationService from '../services/HeightmapGenerationService'; // To be passed as prop
-// import ErosionService from '../services/ErosionService'; // To be passed as prop
-// import HeightmapDisplayService from '../services/HeightmapDisplayService'; // To be passed as prop
-
-
 const TwoDViewport = ({
   currentParams, // Global parameters from SettingsPanel/App.js
   heightmapGenerationService, // Instance of HeightmapGenerationService
@@ -202,40 +196,21 @@ const TwoDViewport = ({
     }
   };
 
-  // Placeholder for erosion progress update from service
-  // const updateErosionProgress = (progress, erodedHeightmap) => {
-  //   setErosionProgress(progress);
-  //   setHeightmapData(new Float32Array(erodedHeightmap)); // Update with data from worker
-  // };
-
-  // const handleErosionComplete = (finalHeightmap) => {
-  //   setIsEroding(false);
-  //   setHeightmapData(new Float32Array(finalHeightmap));
-  //   console.log("Erosion process completed.");
-  //   if (onHeightmapGenerated) {
-  //     // Recalculate min/max for the final eroded data
-  //     let minH = finalHeightmap[0], maxH = finalHeightmap[0];
-  //     for (let i = 1; i < finalHeightmap.length; i++) {
-  //         if (finalHeightmap[i] < minH) minH = finalHeightmap[i];
-  //         if (finalHeightmap[i] > maxH) maxH = finalHeightmap[i];
-  //     }
-  //     onHeightmapGenerated(finalHeightmap, mapWidth, mapHeight, minH, maxH);
-  //   }
-  // };
+  // Placeholder for erosion progress update from service - these would be implemented
+  // when fully wiring up erosionService.onProgress and erosionService.onComplete
+  // For now, removing them as they are unused placeholders.
 
 
   const viewportStyle = {
     border: '1px solid #ccc',
-    width: mapWidth, // Make viewport responsive or fixed based on design
-    height: mapHeight, // Same as above
+    width: mapWidth,
+    height: mapHeight,
     margin: '10px auto',
-    position: 'relative', // For potential overlays or absolute positioned elements
+    position: 'relative',
   };
 
   const canvasStyle = {
-    display: 'block', // Removes extra space below canvas if it's inline
-    // width: '100%', // Make canvas responsive within its container
-    // height: '100%', // Same as above
+    display: 'block',
   };
 
   const buttonContainerStyle = {

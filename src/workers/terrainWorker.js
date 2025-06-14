@@ -96,7 +96,6 @@ self.onmessage = async (e) => {
         // Calculate Normals (Y-up)
         // Using a basic approximation for speed in worker. More robust methods (e.g. THREE.Geometry.computeVertexNormals) are costly here.
         const dx_normal_approx = terrainWorldSize / (currentMapGridWidth > 1 ? currentMapGridWidth - 1 : 1);
-        // const dz_normal_approx = terrainWorldSize / (currentMapGridHeight > 1 ? currentMapGridHeight - 1 : 1); // Assuming square grid cells in world space for Y component of normal
 
         for (let j = 0; j < currentMapGridHeight; j++) {
             for (let i = 0; i < currentMapGridWidth; i++) {
@@ -120,16 +119,14 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'progress', phase: 'mesh', value: 1.0 });
 
 
-        // C. Scatter Generation (Placeholder for now)
-        const allScatterData = [];
         // C. Scatter Generation
+        const allScatterData = [];
         self.postMessage({ type: 'progress', phase: 'scatter', value: 0.0 });
         const scatterLayersConfig = params.scatter?.scatterLayers || [];
         const terrainWorldProps = {
             worldWidth: terrainWorldSize,
             worldDepth: terrainWorldSize // Assuming square terrain for scatter service
         };
-        // const allScatterData = []; // Already initialized
 
         if (scatterLayersConfig.length > 0) {
             let layersProcessed = 0;
